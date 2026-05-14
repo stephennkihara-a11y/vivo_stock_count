@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- QA demo data per spec Section 16: 3 zones, ~12 rack templates, a
+         handful of SKUs, a session in a useful state for hands-on demo. -->
+
+    <data noupdate="1">
+
+        <!-- Stock location: the demo store. -->
+        <record id="demo_location_store" model="stock.location">
+            <field name="name">Vivo Demo Store</field>
+            <field name="usage">internal</field>
+        </record>
+
+        <!-- Zones -->
+        <record id="demo_zone_floor" model="vivo.count.zone">
+            <field name="name">Display Floor — Women's</field>
+            <field name="location_id" ref="demo_location_store"/>
+            <field name="sequence">1</field>
+        </record>
+        <record id="demo_zone_backroom" model="vivo.count.zone">
+            <field name="name">Backroom</field>
+            <field name="location_id" ref="demo_location_store"/>
+            <field name="sequence">2</field>
+        </record>
+        <record id="demo_zone_fitting" model="vivo.count.zone">
+            <field name="name">Fitting Rooms</field>
+            <field name="location_id" ref="demo_location_store"/>
+            <field name="sequence">3</field>
+        </record>
+
+        <!-- Rack templates (12 total: 5 + 5 + 2) -->
+        <record id="demo_rack_A1" model="vivo.count.section.template">
+            <field name="name">Rack A1 — Dresses</field>
+            <field name="zone_id" ref="demo_zone_floor"/>
+            <field name="sequence">1</field>
+        </record>
+        <record id="demo_rack_A2" model="vivo.count.section.template">
+            <field name="name">Rack A2 — Tops</field>
+            <field name="zone_id" ref="demo_zone_floor"/>
+            <field name="sequence">2</field>
+        </record>
+        <record id="demo_rack_A3" model="vivo.count.section.template">
+            <field name="name">Rack A3 — Bottoms</field>
+            <field name="zone_id" ref="demo_zone_floor"/>
+            <field name="sequence">3</field>
+        </record>
+        <record id="demo_rack_A4" model="vivo.count.section.template">
+            <field name="name">Rack A4 — Activewear</field>
+            <field name="zone_id" ref="demo_zone_floor"/>
+            <field name="sequence">4</field>
+        </record>
+        <record id="demo_rack_A5" model="vivo.count.section.template">
+            <field name="name">Rack A5 — Accessories</field>
+            <field name="zone_id" ref="demo_zone_floor"/>
+            <field name="sequence">5</field>
+        </record>
+        <record id="demo_rack_B1" model="vivo.count.section.template">
+            <field name="name">Backroom B1 — Reserves</field>
+            <field name="zone_id" ref="demo_zone_backroom"/>
+            <field name="sequence">1</field>
+        </record>
+        <record id="demo_rack_B2" model="vivo.count.section.template">
+            <field name="name">Backroom B2 — Damaged</field>
+            <field name="zone_id" ref="demo_zone_backroom"/>
+            <field name="sequence">2</field>
+        </record>
+        <record id="demo_rack_B3" model="vivo.count.section.template">
+            <field name="name">Backroom B3 — In Transit</field>
+            <field name="zone_id" ref="demo_zone_backroom"/>
+            <field name="sequence">3</field>
+        </record>
+        <record id="demo_rack_B4" model="vivo.count.section.template">
+            <field name="name">Backroom B4 — New Arrivals</field>
+            <field name="zone_id" ref="demo_zone_backroom"/>
+            <field name="sequence">4</field>
+        </record>
+        <record id="demo_rack_B5" model="vivo.count.section.template">
+            <field name="name">Backroom B5 — Returns</field>
+            <field name="zone_id" ref="demo_zone_backroom"/>
+            <field name="sequence">5</field>
+        </record>
+        <record id="demo_rack_C1" model="vivo.count.section.template">
+            <field name="name">Fitting Room 1</field>
+            <field name="zone_id" ref="demo_zone_fitting"/>
+            <field name="sequence">1</field>
+        </record>
+        <record id="demo_rack_C2" model="vivo.count.section.template">
+            <field name="name">Fitting Room 2</field>
+            <field name="zone_id" ref="demo_zone_fitting"/>
+            <field name="sequence">2</field>
+        </record>
+
+        <!-- Sample SKUs (storable goods so stock.quant tests work). -->
+        <record id="demo_product_dress_red_s" model="product.product">
+            <field name="name">Dress Red S</field>
+            <field name="type">consu</field>
+            <field name="is_storable">True</field>
+            <field name="standard_price">1500.00</field>
+            <field name="barcode">VFG-DRS-RED-S</field>
+        </record>
+        <record id="demo_product_dress_red_m" model="product.product">
+            <field name="name">Dress Red M</field>
+            <field name="type">consu</field>
+            <field name="is_storable">True</field>
+            <field name="standard_price">1500.00</field>
+            <field name="barcode">VFG-DRS-RED-M</field>
+        </record>
+        <record id="demo_product_top_black_s" model="product.product">
+            <field name="name">Top Black S</field>
+            <field name="type">consu</field>
+            <field name="is_storable">True</field>
+            <field name="standard_price">800.00</field>
+            <field name="barcode">VFG-TOP-BLK-S</field>
+        </record>
+        <record id="demo_product_jean_blue_32" model="product.product">
+            <field name="name">Jeans Blue 32</field>
+            <field name="type">consu</field>
+            <field name="is_storable">True</field>
+            <field name="standard_price">2200.00</field>
+            <field name="barcode">VFG-JEAN-BLU-32</field>
+        </record>
+        <record id="demo_product_legging_blk_m" model="product.product">
+            <field name="name">Leggings Black M</field>
+            <field name="type">consu</field>
+            <field name="is_storable">True</field>
+            <field name="standard_price">1200.00</field>
+            <field name="barcode">VFG-LEG-BLK-M</field>
+        </record>
+
+        <!-- A draft session waiting to be started — gives QA a one-click
+             entry point. The audit team can run Start and walk through
+             scanning / physical / approve / apply from there. -->
+        <record id="demo_session_draft" model="vivo.count.session">
+            <field name="location_id" ref="demo_location_store"/>
+            <field name="scheduled_date" eval="(DateTime.today()).strftime('%Y-%m-%d 08:00:00')"/>
+        </record>
+
+    </data>
+</odoo>

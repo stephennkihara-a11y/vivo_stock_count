@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ir.actions.report -->
+    <record id="action_report_reconciliation_pdf" model="ir.actions.report">
+        <field name="name">Stock Take Reconciliation</field>
+        <field name="model">vivo.count.reconciliation</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">vivo_stock_count.reconciliation_pdf_template</field>
+        <field name="report_file">vivo_stock_count.reconciliation_pdf_template</field>
+        <field name="binding_model_id" ref="model_vivo_count_reconciliation"/>
+        <field name="binding_type">report</field>
+    </record>
+
+    <!-- QWeb template -->
+    <template id="reconciliation_pdf_template">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="doc">
+                <t t-call="web.external_layout">
+                    <div class="page">
+                        <h2>Stock Take Reconciliation</h2>
+                        <h3 t-field="doc.name"/>
+                        <p>
+                            Store: <strong t-field="doc.location_id"/><br/>
+                            Generated: <span t-field="doc.generated_at"/><br/>
+                            Variance band: <strong t-field="doc.variance_band"/>
+                        </p>
+
+                        <h4>Participants</h4>
+                        <table class="table table-sm">
+                            <tr>
+                                <td><strong>Scanners</strong></td>
+                                <td>
+                                    <t t-foreach="doc.scanner_ids" t-as="u">
+                                        <span t-field="u.name"/><t t-if="not u_last">, </t>
+                                    </t>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Physical counters</strong></td>
+                                <td>
+                                    <t t-foreach="doc.physical_counter_ids" t-as="u">
+                                        <span t-field="u.name"/><t t-if="not u_last">, </t>
+                                    </t>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Reviewer</strong></td>
+                                <td t-field="doc.reviewer_id"/>
+                            </tr>
+                            <tr>
+                                <td><strong>Approver</strong></td>
+                                <td t-field="doc.approver_id"/>
+                            </tr>
+                            <tr>
+                                <td><strong>Applied by</strong></td>
+                                <td t-field="doc.applied_by_id"/>
+                            </tr>
+                        </table>
+
+                        <h4>Totals</h4>
+                        <table class="table table-sm">
+                            <tr>
+                                <td>Total absolute variance qty</td>
+                                <td style="text-align:right" t-field="doc.total_variance_qty"/>
+                            </tr>
+                            <tr>
+                                <td>Total absolute variance value</td>
+                                <td style="text-align:right">
+                                    <span t-field="doc.total_variance_value" t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Overage value (positive)</td>
+                                <td style="text-align:right;color:#198754">
+                                    <span t-field="doc.overage_value" t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Shortage value (negative)</td>
+                                <td style="text-align:right;color:#dc3545">
+                                    <span t-field="doc.shortage_value" t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                                </td>
+                            </tr>
+                        </table>
+
+                        <h4>Variance Lines (highlighted rows have non-zero variance)</h4>
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Zone</th>
+                                    <th>Section</th>
+                                    <th>Barcode</th>
+                                    <th>Product</th>
+                                    <th style="text-align:right">Qty Before</th>
+                                    <th style="text-align:right">Qty After</th>
+                                    <th style="text-align:right">Qty Variance</th>
+                                    <th style="text-align:right">Value Before</th>
+                                    <th style="text-align:right">Value After</th>
+                                    <th style="text-align:right">Value Variance</th>
+                                    <th>Reason</th>
+                                    <th>Rescans</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-foreach="doc.line_ids" t-as="line">
+                                    <tr t-attf-style="#{'background-color:#fdecea;' if line.variance_type == 'shortage' else ('background-color:#e8f5e9;' if line.variance_type == 'overage' else '')}">
+                                        <td><t t-esc="line.zone_id.name or 'Multiple'"/></td>
+                                        <td><t t-esc="line.section_id.name or 'Multiple'"/></td>
+                                        <td t-field="line.barcode"/>
+                                        <td t-field="line.product_id"/>
+                                        <td style="text-align:right" t-field="line.qty_before"/>
+                                        <td style="text-align:right" t-field="line.qty_after"/>
+                                        <td style="text-align:right" t-field="line.qty_variance"/>
+                                        <td style="text-align:right">
+                                            <span t-field="line.value_before" t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                                        </td>
+                                        <td style="text-align:right">
+                                            <span t-field="line.value_after" t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                                        </td>
+                                        <td style="text-align:right">
+                                            <span t-field="line.value_variance" t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                                        </td>
+                                        <td t-field="line.variance_reason"/>
+                                        <td style="text-align:right" t-field="line.section_rescan_count"/>
+                                    </tr>
+                                </t>
+                            </tbody>
+                        </table>
+
+                        <p class="text-muted" style="margin-top:24px;font-size:0.85em">
+                            This reconciliation is immutable. Generated automatically on Apply per SPEC-ODOO-001 Section 4.8.
+                        </p>
+                    </div>
+                </t>
+            </t>
+        </t>
+    </template>
+
+</odoo>

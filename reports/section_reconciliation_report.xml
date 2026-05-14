@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="action_report_section_reconciliation" model="ir.actions.report">
+        <field name="name">Section Reconciliation</field>
+        <field name="model">vivo.count.session</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">vivo_stock_count.section_reconciliation_template</field>
+        <field name="report_file">vivo_stock_count.section_reconciliation_template</field>
+        <field name="binding_model_id" ref="model_vivo_count_session"/>
+        <field name="binding_type">report</field>
+    </record>
+
+    <template id="section_reconciliation_template">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="doc">
+                <t t-call="web.external_layout">
+                    <div class="page">
+                        <h2>Section Reconciliation</h2>
+                        <h3 t-field="doc.name"/>
+                        <p>
+                            Store: <strong t-field="doc.location_id"/>.
+                            Every rack, its scan total, its independent physical count,
+                            and how many re-scan loops it needed — the digital record
+                            of the floor-level verification.
+                        </p>
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Zone</th>
+                                    <th>Rack</th>
+                                    <th>Scanner</th>
+                                    <th>Physical Counter</th>
+                                    <th style="text-align:right">Scan Total</th>
+                                    <th style="text-align:right">Physical Total</th>
+                                    <th style="text-align:right">Re-scans</th>
+                                    <th>State</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-foreach="doc.section_ids" t-as="s">
+                                    <tr t-attf-style="#{'background-color:#e8f5e9;' if s.state == 'reconciled' else ('background-color:#fdecea;' if s.state == 'variance_rescan' else '')}">
+                                        <td t-field="s.zone_id"/>
+                                        <td t-field="s.name"/>
+                                        <td t-field="s.scanner_id"/>
+                                        <td t-field="s.physical_counter_id"/>
+                                        <td style="text-align:right" t-field="s.scan_total_qty"/>
+                                        <td style="text-align:right" t-field="s.physical_total_qty"/>
+                                        <td style="text-align:right" t-field="s.rescan_count"/>
+                                        <td t-field="s.state"/>
+                                    </tr>
+                                </t>
+                            </tbody>
+                        </table>
+                    </div>
+                </t>
+            </t>
+        </t>
+    </template>
+</odoo>

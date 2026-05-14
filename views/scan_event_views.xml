@@ -17,9 +17,34 @@
         </field>
     </record>
 
+    <record id="view_vivo_scan_event_search" model="ir.ui.view">
+        <field name="name">vivo.count.scan.event.search</field>
+        <field name="model">vivo.count.scan.event</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="session_id"/>
+                <field name="section_id"/>
+                <field name="product_id"/>
+                <field name="counter_id"/>
+                <field name="device_id"/>
+                <filter name="filter_today" string="Today" domain="[('scanned_at','&gt;=', context_today().strftime('%Y-%m-%d 00:00:00'))]"/>
+                <filter name="filter_rescan" string="Re-scans" domain="[('scan_type','=','rescan')]"/>
+                <filter name="filter_correction" string="Corrections" domain="[('scan_type','=','correction')]"/>
+                <group string="Group By">
+                    <filter name="group_session" string="Session" context="{'group_by':'session_id'}"/>
+                    <filter name="group_section" string="Section" context="{'group_by':'section_id'}"/>
+                    <filter name="group_counter" string="Counter" context="{'group_by':'counter_id'}"/>
+                    <filter name="group_type" string="Scan Type" context="{'group_by':'scan_type'}"/>
+                    <filter name="group_day" string="Day" context="{'group_by':'scanned_at:day'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
     <record id="action_vivo_scan_event" model="ir.actions.act_window">
-        <field name="name">Scan Audit Log</field>
+        <field name="name">Audit Trail</field>
         <field name="res_model">vivo.count.scan.event</field>
         <field name="view_mode">list</field>
+        <field name="search_view_id" ref="view_vivo_scan_event_search"/>
     </record>
 </odoo>

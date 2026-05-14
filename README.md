@@ -15,8 +15,8 @@ section is only reconciled when both totals agree.
 | 1 | Data model, both state machines, access rights, segregation-of-duties constraints | Complete |
 | 2 | Desktop manager review interface, colour-coded section progress board | Complete |
 | 3 | Mobile PWA — Scanner + Physical Counter modes, concurrent multi-scanner | Complete |
-| 4 | GL posting via `stock.quant` inventory pipeline, auto-reconciliation on Apply | **In review** |
-| 5 | Reporting, audit log, PDF/Excel reconciliation exports, audit auto-notifications | Pending |
+| 4 | GL posting via `stock.quant` inventory pipeline, auto-reconciliation on Apply | Complete |
+| 5 | Reporting, audit log, PDF/Excel reconciliation exports, audit auto-notifications | **In review** |
 
 ## Dependencies
 
@@ -148,6 +148,40 @@ A separate Postgres-level concurrency probe that exercises real
 multi-process row-locking is out of Phase 3 scope and lives in the QA
 harness — Odoo's `TransactionCase` runs inside one transaction and cannot
 exercise inter-transaction locking from within a single test process.
+
+Phase 4 tests (`test_gl_posting.py`) cover #1 (counter still blocked
+after full plumbing), #9 (stock.quant + stock.move records reflect
+counted_qty), #15 (auto-reconciliation), #16 (qty/value before/after
++ variance flags including multi-section aggregation), and Risk #4
+(mid-batch failure rolls back atomically).
+
+Phase 5 tests (`test_reports.py`) cover #17 (audit notification posts
+chatter + schedules activity on Apply) and #19 (PDF templates compile +
+bind data; xlsxwriter produces valid output).
+
+## Acceptance criteria coverage
+
+| AC | Description | Covered in |
+|---|---|---|
+| 1 | Counter cannot post to GL | Phase 1, 4 |
+| 2 | No reconcile on scan-vs-physical mismatch | Phase 1 |
+| 3 | Scanner ≠ physical counter | Phase 1 |
+| 4 | No session advance with unreconciled sections | Phase 1 |
+| 5 | Re-scan loop isolated to one section; bounce-from-review isolation | Phase 1, 2 |
+| 6 | Scan-once-then-type-qty | Phase 3 |
+| 7 | Variance-band approval routing (store / regional / CFOO) | Phase 1, 2 |
+| 8 | 60-min offline + deterministic sync without duplicates | Phase 3 |
+| 9 | `stock.quant` + journal on Apply | Phase 4 |
+| 10 | Immutable audit log of every state transition + scan | Phase 1, 3, 4 |
+| 11 | Variance reasons mandatory before approval | Phase 1, 2 |
+| 12 | Reports populate (Count Summary, Section Reconciliation, Variance Trend, Audit Trail) | Phase 5 |
+| 13 | 3 concurrent scanners, no locks / lost scans | Phase 3 |
+| 14 | Section soft-lock visible to other scanners | Phase 1, 3 |
+| 15 | Reconciliation auto-generated on Apply | Phase 4, 5 |
+| 16 | qty/value before/after + variance flags per barcode | Phase 4 |
+| 17 | Internal Audit auto-notified on Apply | Phase 5 |
+| 18 | Reconciliation immutable | Phase 1 |
+| 19 | PDF + Excel exports preserve variance highlighting | Phase 5 |
 
 ## Open / deferred
 

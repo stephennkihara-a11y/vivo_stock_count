@@ -33,6 +33,7 @@ Phase 1 scope:
         "security/ir.model.access.csv",
         "data/sequences.xml",
         "data/default_config.xml",
+        "data/cron_jobs.xml",
         "wizard/wizard_views.xml",
         "views/count_zone_views.xml",
         "views/count_section_template_views.xml",
@@ -44,6 +45,12 @@ Phase 1 scope:
         "views/res_config_settings_views.xml",
         "views/menu_views.xml",
         "views/pwa_menu.xml",
+        "reports/reconciliation_report.xml",
+        "reports/count_summary_report.xml",
+        "reports/section_reconciliation_report.xml",
+    ],
+    "demo": [
+        "demo/demo_data.xml",
     ],
     "assets": {
         "web.assets_backend": [

@@ -22,6 +22,8 @@
         <field name="arch" type="xml">
             <form string="Stock Take Reconciliation" create="0" edit="0" delete="0">
                 <header>
+                    <button name="action_print_pdf" type="object" string="Print PDF" class="btn-primary"/>
+                    <button name="action_export_xlsx" type="object" string="Export Excel"/>
                     <field name="state" widget="statusbar"/>
                 </header>
                 <sheet>
@@ -79,9 +81,65 @@
         </field>
     </record>
 
+    <record id="view_vivo_reconciliation_pivot" model="ir.ui.view">
+        <field name="name">vivo.count.reconciliation.pivot</field>
+        <field name="model">vivo.count.reconciliation</field>
+        <field name="arch" type="xml">
+            <pivot string="Variance Trend" sample="1">
+                <field name="location_id" type="row"/>
+                <field name="generated_at" interval="month" type="col"/>
+                <field name="total_variance_value" type="measure"/>
+                <field name="overage_value" type="measure"/>
+                <field name="shortage_value" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <record id="view_vivo_reconciliation_graph" model="ir.ui.view">
+        <field name="name">vivo.count.reconciliation.graph</field>
+        <field name="model">vivo.count.reconciliation</field>
+        <field name="arch" type="xml">
+            <graph string="Variance Trend" sample="1" type="bar">
+                <field name="location_id"/>
+                <field name="total_variance_value" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <record id="view_vivo_reconciliation_search" model="ir.ui.view">
+        <field name="name">vivo.count.reconciliation.search</field>
+        <field name="model">vivo.count.reconciliation</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="location_id"/>
+                <field name="session_id"/>
+                <field name="reviewer_id"/>
+                <field name="approver_id"/>
+                <field name="applied_by_id"/>
+                <filter name="filter_cfoo_band" string="CFOO Band" domain="[('variance_band','=','cfoo')]"/>
+                <filter name="filter_regional_band" string="Regional Band" domain="[('variance_band','=','regional')]"/>
+                <filter name="filter_this_month" string="This Month" date="generated_at"/>
+                <group string="Group By">
+                    <filter name="group_location" string="Store" context="{'group_by':'location_id'}"/>
+                    <filter name="group_band" string="Band" context="{'group_by':'variance_band'}"/>
+                    <filter name="group_month" string="Month" context="{'group_by':'generated_at:month'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
     <record id="action_vivo_reconciliation" model="ir.actions.act_window">
         <field name="name">Reconciliations</field>
         <field name="res_model">vivo.count.reconciliation</field>
-        <field name="view_mode">list,form</field>
+        <field name="view_mode">list,form,pivot,graph</field>
+        <field name="search_view_id" ref="view_vivo_reconciliation_search"/>
+    </record>
+
+    <record id="action_vivo_variance_trend" model="ir.actions.act_window">
+        <field name="name">Variance Trend</field>
+        <field name="res_model">vivo.count.reconciliation</field>
+        <field name="view_mode">pivot,graph,list</field>
+        <field name="search_view_id" ref="view_vivo_reconciliation_search"/>
     </record>
 </odoo>

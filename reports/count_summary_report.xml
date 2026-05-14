@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="action_report_count_summary" model="ir.actions.report">
+        <field name="name">Count Summary</field>
+        <field name="model">vivo.count.session</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">vivo_stock_count.count_summary_template</field>
+        <field name="report_file">vivo_stock_count.count_summary_template</field>
+        <field name="binding_model_id" ref="model_vivo_count_session"/>
+        <field name="binding_type">report</field>
+    </record>
+
+    <template id="count_summary_template">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="doc">
+                <t t-call="web.external_layout">
+                    <div class="page">
+                        <h2>Count Summary</h2>
+                        <h3 t-field="doc.name"/>
+                        <table class="table table-sm">
+                            <tr><td><strong>Store</strong></td><td t-field="doc.location_id"/></tr>
+                            <tr><td><strong>Zone</strong></td><td><t t-esc="doc.zone_id.name or 'Whole store'"/></td></tr>
+                            <tr><td><strong>Scheduled</strong></td><td t-field="doc.scheduled_date"/></tr>
+                            <tr><td><strong>Started</strong></td><td t-field="doc.start_date"/></tr>
+                            <tr><td><strong>Applied</strong></td><td t-field="doc.end_date"/></tr>
+                            <tr><td><strong>State</strong></td><td t-field="doc.state"/></tr>
+                            <tr><td><strong>Sections</strong></td><td><span t-field="doc.sections_reconciled"/> / <span t-field="doc.sections_total"/></td></tr>
+                            <tr><td><strong>Variance value</strong></td>
+                                <td><span t-field="doc.variance_value" t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/> (<span t-field="doc.tolerance_band"/>)</td></tr>
+                            <tr><td><strong>Reviewer</strong></td><td t-field="doc.reviewer_id"/></tr>
+                            <tr><td><strong>Approver</strong></td><td t-field="doc.approver_id"/></tr>
+                            <tr><td><strong>Applied by</strong></td><td t-field="doc.applied_by_id"/></tr>
+                        </table>
+
+                        <h4>Variance Lines</h4>
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Section</th>
+                                    <th>Product</th>
+                                    <th style="text-align:right">System</th>
+                                    <th style="text-align:right">Counted</th>
+                                    <th style="text-align:right">Diff</th>
+                                    <th style="text-align:right">Variance</th>
+                                    <th>Reason</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-foreach="doc.line_ids.filtered(lambda l: l.difference != 0)" t-as="line">
+                                    <tr>
+                                        <td t-field="line.section_id"/>
+                                        <td t-field="line.product_id"/>
+                                        <td style="text-align:right" t-field="line.system_qty"/>
+                                        <td style="text-align:right" t-field="line.counted_qty"/>
+                                        <td style="text-align:right" t-field="line.difference"/>
+                                        <td style="text-align:right">
+                                            <span t-field="line.variance_value" t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                                        </td>
+                                        <td t-field="line.variance_reason"/>
+                                    </tr>
+                                </t>
+                            </tbody>
+                        </table>
+
+                        <div t-field="doc.notes"/>
+                    </div>
+                </t>
+            </t>
+        </t>
+    </template>
+</odoo>

@@ -674,6 +674,8 @@ class VivoCountSession(models.Model):
                     "section_rescan_count": d["max_rescan"],
                 }
             )
+        # AC #17: notify the audit group the moment the report exists.
+        recon.notify_audit()
         return recon
 
     def action_open_section_board(self):

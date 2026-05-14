@@ -97,6 +97,80 @@ class VivoCountReconciliation(models.Model):
     def unlink(self):
         raise AccessError(_("Reconciliation reports cannot be deleted."))
 
+    # ------------------------------------------------------------------
+    # Phase 5 — audit notification + export actions
+    # ------------------------------------------------------------------
+    def _audit_notify_group(self):
+        """Resolve the audit recipient group from config or default."""
+        Param = self.env["ir.config_parameter"].sudo()
+        gid = Param.get_param("vivo_count.audit_notify_group_id")
+        if gid:
+            try:
+                return self.env["res.groups"].browse(int(gid))
+            except (ValueError, TypeError):
+                pass
+        return self.env.ref("vivo_stock_count.group_vivo_count_cfoo_audit")
+
+    def notify_audit(self):
+        """Post chatter + schedule activities for the audit group (AC #17).
+
+        Called by the session's _generate_reconciliation at Apply time so
+        the audit team gets a working link the moment the report exists,
+        not at end-of-day.
+        """
+        self.ensure_one()
+        group = self._audit_notify_group()
+        if not group:
+            return
+        partners = group.users.mapped("partner_id")
+        body = (
+            "<p>Stock Take Reconciliation <strong>%s</strong> generated for "
+            "store <strong>%s</strong>.</p>"
+            "<p>Total variance value: %s. Band triggered: %s.</p>"
+            "<p>Applied by: %s.</p>"
+        ) % (
+            self.name,
+            self.location_id.display_name,
+            self.total_variance_value,
+            dict(self._fields["variance_band"].selection).get(
+                self.variance_band, ""
+            ),
+            self.applied_by_id.name or "",
+        )
+        # message_post writes through the immutability guard's allowlist.
+        self.message_post(
+            body=body,
+            partner_ids=partners.ids,
+            subject="Reconciliation %s ready for review" % self.name,
+            subtype_xmlid="mail.mt_comment",
+        )
+        try:
+            activity_type = self.env.ref("mail.mail_activity_data_todo")
+        except ValueError:
+            activity_type = False
+        if activity_type:
+            for user in group.users:
+                self.activity_schedule(
+                    activity_type_id=activity_type.id,
+                    user_id=user.id,
+                    summary="Review stock take reconciliation %s" % self.name,
+                    note=body,
+                )
+
+    def action_print_pdf(self):
+        self.ensure_one()
+        return self.env.ref(
+            "vivo_stock_count.action_report_reconciliation_pdf"
+        ).report_action(self)
+
+    def action_export_xlsx(self):
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_url",
+            "url": "/vivo_stock_count/reconciliation/%d/xlsx" % self.id,
+            "target": "self",
+        }
+
 
 class VivoCountReconciliationLine(models.Model):
     _name = "vivo.count.reconciliation.line"
