@@ -140,26 +140,72 @@ class VivoCountSession(models.Model):
             session.sections_reconciled = sum(1 for s in sections if s.state == "reconciled")
             session.sections_outstanding = session.sections_total - session.sections_reconciled
 
-    @api.depends("line_ids.variance_value", "line_ids.section_id.state")
+    @api.depends(
+        "line_ids.counted_qty",
+        "line_ids.system_qty",
+        "line_ids.unit_cost",
+        "line_ids.section_id.state",
+    )
     def _compute_variance_value(self):
+        """Sum of absolute variance value across the session.
+
+        Aggregates per product first to avoid double-counting when the
+        same SKU appears in multiple sections (e.g. snapshot line in one
+        section + scanned lines in others). variance_value is |Σ(counted)
+        − Σ(system)| × unit_cost per product, summed across products.
+        """
         for session in self:
-            total = 0.0
+            by_product = {}
             for line in session.line_ids:
-                if line.section_id.state == "reconciled":
-                    total += abs(line.variance_value)
+                if line.section_id.state != "reconciled":
+                    continue
+                pid = line.product_id.id
+                d = by_product.setdefault(
+                    pid,
+                    {"diff": 0.0, "unit_cost": line.unit_cost or 0.0},
+                )
+                d["diff"] += (line.counted_qty or 0.0) - (line.system_qty or 0.0)
+                # Use the latest non-zero unit_cost we see.
+                if line.unit_cost:
+                    d["unit_cost"] = line.unit_cost
+            total = sum(abs(v["diff"] * v["unit_cost"]) for v in by_product.values())
             session.variance_value = total
 
-    @api.depends("line_ids.difference", "line_ids.variance_reason", "section_ids.state")
+    @api.depends(
+        "line_ids.counted_qty",
+        "line_ids.system_qty",
+        "line_ids.variance_reason",
+        "line_ids.section_id.state",
+    )
     def _compute_variance_summary(self):
+        """Variance counts at the product level.
+
+        variance_line_count = number of products with a net variance.
+        sections_with_variance = number of sections that have at least one
+        variance line (still per-line, since manager review is per-line).
+        unreasoned_line_count = number of variance LINES (per-line) lacking
+        a reason — drives the AC #11 approval block.
+        """
         for session in self:
-            variance_lines = session.line_ids.filtered(
-                lambda l: l.section_id.state == "reconciled" and l.difference != 0.0
+            by_product = {}
+            unreasoned_lines = 0
+            variance_sections = set()
+            for line in session.line_ids:
+                if line.section_id.state != "reconciled":
+                    continue
+                pid = line.product_id.id
+                by_product[pid] = by_product.get(pid, 0.0) + (
+                    (line.counted_qty or 0.0) - (line.system_qty or 0.0)
+                )
+                if line.counted_qty != line.system_qty:
+                    if not line.variance_reason:
+                        unreasoned_lines += 1
+                    variance_sections.add(line.section_id.id)
+            session.variance_line_count = sum(
+                1 for d in by_product.values() if d != 0.0
             )
-            session.variance_line_count = len(variance_lines)
-            session.sections_with_variance = len(variance_lines.mapped("section_id"))
-            session.unreasoned_line_count = len(
-                variance_lines.filtered(lambda l: not l.variance_reason)
-            )
+            session.sections_with_variance = len(variance_sections)
+            session.unreasoned_line_count = unreasoned_lines
 
     @api.depends(
         "start_date",
@@ -454,9 +500,17 @@ class VivoCountSession(models.Model):
     def action_apply(self):
         """approved -> applied.
 
-        Phase 1 placeholder: state transition + applied_by + end_date only.
-        Stock.quant writes, account.move creation, and reconciliation
-        generation land in Phase 4 (one transaction, per A7).
+        Phase 4: full Apply. In one transaction (per A7):
+          1. Write counted quantities to stock.quant via the native
+             inventory-adjustment pipeline (creates stock.move records;
+             account.move is created automatically by Odoo's valuation
+             logic for real-time-valued products).
+          2. Generate the immutable vivo.count.reconciliation report.
+          3. Transition session to 'applied'.
+
+        If any step raises, the entire transaction rolls back and the
+        session remains 'approved' so the user can retry. (Risk #4 in
+        spec Section 14.)
         """
         self._ensure_state({"approved"})
         for session in self:
@@ -468,14 +522,159 @@ class VivoCountSession(models.Model):
                 # AC #1: counters can never apply.
                 raise AccessError(_("Counters cannot post stock counts to the GL."))
             session._check_approver_authority()
-            session.write(
+            # Single savepoint wraps GL writes + reconciliation generation
+            # + state transition (A7). On any exception, all three roll
+            # back together; session stays at 'approved' for retry.
+            with session.env.cr.savepoint():
+                session._apply_inventory_adjustment()
+                recon = session._generate_reconciliation()
+                session.write(
+                    {
+                        "state": "applied",
+                        "applied_by_id": self.env.user.id,
+                        "end_date": fields.Datetime.now(),
+                        "reconciliation_id": recon.id,
+                    }
+                )
+        return True
+
+    # ------------------------------------------------------------------
+    # Apply — inventory adjustment and reconciliation generation
+    # ------------------------------------------------------------------
+    def _apply_inventory_adjustment(self):
+        """Write counted quantities to stock.quant via the native pipeline.
+
+        Aggregates counted_qty across all sections per product, then uses
+        stock.quant's inventory-mode update so Odoo creates the standard
+        adjustment moves (and journal entries for real-time-valued
+        products) — the module never bypasses native accounting.
+        """
+        self.ensure_one()
+        if not self.location_id:
+            raise UserError(_("Session has no location."))
+        Quant = self.env["stock.quant"]
+        # Aggregate per product across reconciled sections.
+        per_product = self._aggregate_counts_by_product()
+        for product_id, counted in per_product.items():
+            quant = Quant.search(
+                [
+                    ("product_id", "=", product_id),
+                    ("location_id", "=", self.location_id.id),
+                ],
+                limit=1,
+            )
+            if quant:
+                quant.with_context(inventory_mode=True).write(
+                    {"inventory_quantity": counted}
+                )
+            else:
+                quant = Quant.with_context(inventory_mode=True).create(
+                    {
+                        "product_id": product_id,
+                        "location_id": self.location_id.id,
+                        "inventory_quantity": counted,
+                    }
+                )
+            # action_apply_inventory creates the stock.move (and account.move
+            # if the product is in real-time valuation).
+            quant.action_apply_inventory()
+
+    def _aggregate_counts_by_product(self):
+        """Return {product_id: total_counted_qty} for reconciled sections."""
+        self.ensure_one()
+        agg = {}
+        for line in self.line_ids:
+            if line.section_id.state != "reconciled":
+                continue
+            agg[line.product_id.id] = agg.get(line.product_id.id, 0.0) + (
+                line.counted_qty or 0.0
+            )
+        return agg
+
+    def _generate_reconciliation(self):
+        """Create the immutable Stock Take Reconciliation report.
+
+        One reconciliation record per applied session, with one
+        reconciliation line PER PRODUCT — aggregating across sections so
+        the variance is the genuine net per-SKU figure (AC #16). zone_id
+        and section_id on the recon line point to the predominant section
+        for that product when it lives in exactly one rack; left blank
+        when the product is split across racks (the report renders
+        'Multiple' in that case).
+        """
+        self.ensure_one()
+        Recon = self.env["vivo.count.reconciliation"].sudo()
+        ReconLine = self.env["vivo.count.reconciliation.line"].sudo()
+        seq = self.env["ir.sequence"].next_by_code(
+            "vivo.count.reconciliation"
+        ) or _("New")
+
+        per_product = {}
+        for line in self.line_ids:
+            if line.section_id.state != "reconciled":
+                continue
+            pid = line.product_id.id
+            d = per_product.setdefault(
+                pid,
                 {
-                    "state": "applied",
-                    "applied_by_id": self.env.user.id,
-                    "end_date": fields.Datetime.now(),
+                    "product": line.product_id,
+                    "qty_before": 0.0,
+                    "qty_after": 0.0,
+                    "unit_cost": line.unit_cost or 0.0,
+                    "sections": set(),
+                    "zones": set(),
+                    "max_rescan": 0,
+                    "reasons": set(),
+                },
+            )
+            d["qty_before"] += line.system_qty or 0.0
+            d["qty_after"] += line.counted_qty or 0.0
+            if line.unit_cost:
+                d["unit_cost"] = line.unit_cost
+            if line.counted_qty:
+                d["sections"].add(line.section_id.id)
+                d["zones"].add(line.section_id.zone_id.id)
+            d["max_rescan"] = max(d["max_rescan"], line.section_id.rescan_count)
+            if line.variance_reason:
+                d["reasons"].add(line.variance_reason)
+
+        recon = Recon.create(
+            {
+                "name": seq,
+                "session_id": self.id,
+                "generated_at": fields.Datetime.now(),
+                "variance_band": self.tolerance_band,
+                "scanner_ids": [
+                    (6, 0, self.section_ids.mapped("scanner_id").ids)
+                ],
+                "physical_counter_ids": [
+                    (6, 0, self.section_ids.mapped("physical_counter_id").ids)
+                ],
+                "reviewer_id": self.reviewer_id.id or False,
+                "approver_id": self.approver_id.id or False,
+                "applied_by_id": self.env.user.id,
+            }
+        )
+
+        for pid, d in per_product.items():
+            section_id = list(d["sections"])[0] if len(d["sections"]) == 1 else False
+            zone_id = list(d["zones"])[0] if len(d["zones"]) == 1 else False
+            ReconLine.create(
+                {
+                    "reconciliation_id": recon.id,
+                    "product_id": pid,
+                    "barcode": d["product"].barcode or "",
+                    "section_id": section_id,
+                    "zone_id": zone_id,
+                    "qty_before": d["qty_before"],
+                    "qty_after": d["qty_after"],
+                    "value_before": d["qty_before"] * d["unit_cost"],
+                    "value_after": d["qty_after"] * d["unit_cost"],
+                    "variance_reason": ", ".join(sorted(d["reasons"])) or "",
+                    "section_rescan_count": d["max_rescan"],
                 }
             )
-        return True
+        return recon
 
     def action_open_section_board(self):
         """Open the colour-coded section progress board for this session."""

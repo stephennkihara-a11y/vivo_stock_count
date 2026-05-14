@@ -5,3 +5,4 @@ from . import test_access_rights
 from . import test_review_ui
 from . import test_pwa_api
 from . import test_concurrent_scanning
+from . import test_gl_posting

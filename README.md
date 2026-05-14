@@ -14,8 +14,8 @@ section is only reconciled when both totals agree.
 |---|---|---|
 | 1 | Data model, both state machines, access rights, segregation-of-duties constraints | Complete |
 | 2 | Desktop manager review interface, colour-coded section progress board | Complete |
-| 3 | Mobile PWA — Scanner + Physical Counter modes, concurrent multi-scanner | **In review** |
-| 4 | GL posting via `stock.quant._update_available_quantity()`, auto-reconciliation on Apply | Pending |
+| 3 | Mobile PWA — Scanner + Physical Counter modes, concurrent multi-scanner | Complete |
+| 4 | GL posting via `stock.quant` inventory pipeline, auto-reconciliation on Apply | **In review** |
 | 5 | Reporting, audit log, PDF/Excel reconciliation exports, audit auto-notifications | Pending |
 
 ## Dependencies

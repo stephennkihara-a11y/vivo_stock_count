@@ -83,11 +83,24 @@ class VivoCountCommon(TransactionCase):
             }
         )
 
+        # Storable Goods so Phase 4 stock.quant tests can write through
+        # the native inventory pipeline. `is_storable` is Odoo 18's
+        # successor to the old `type='product'`.
         cls.product_a = cls.env["product.product"].create(
-            {"name": "T-Shirt Red M", "type": "consu", "standard_price": 500.0}
+            {
+                "name": "T-Shirt Red M",
+                "type": "consu",
+                "is_storable": True,
+                "standard_price": 500.0,
+            }
         )
         cls.product_b = cls.env["product.product"].create(
-            {"name": "Dress Blue S", "type": "consu", "standard_price": 1500.0}
+            {
+                "name": "Dress Blue S",
+                "type": "consu",
+                "is_storable": True,
+                "standard_price": 1500.0,
+            }
         )
 
     def _new_session(self, zone=None):
