@@ -12,9 +12,9 @@ section is only reconciled when both totals agree.
 
 | Phase | Scope | State |
 |---|---|---|
-| 1 | Data model, both state machines, access rights, segregation-of-duties constraints | **In review** |
-| 2 | Desktop manager review interface, colour-coded section progress board | Pending |
-| 3 | Mobile PWA — Scanner + Physical Counter modes, concurrent multi-scanner | Pending |
+| 1 | Data model, both state machines, access rights, segregation-of-duties constraints | Complete |
+| 2 | Desktop manager review interface, colour-coded section progress board | Complete |
+| 3 | Mobile PWA — Scanner + Physical Counter modes, concurrent multi-scanner | **In review** |
 | 4 | GL posting via `stock.quant._update_available_quantity()`, auto-reconciliation on Apply | Pending |
 | 5 | Reporting, audit log, PDF/Excel reconciliation exports, audit auto-notifications | Pending |
 
@@ -90,6 +90,39 @@ Two enforced rules:
 Plus group-level: counters never reach the `action_apply` path; variance
 band routing locks each approval level to the matching group.
 
+## Mobile PWA
+
+The counting app is an installable Progressive Web App served from Odoo
+at `/vivo-count/pwa`. Counters and store managers reach it from the
+**Stock Count → Mobile App** menu entry, or by typing the URL directly
+into a phone browser.
+
+To install on a counter's device:
+
+1. Sign into Odoo on the phone (HTTPS only).
+2. Open `/vivo-count/pwa` in Chrome (Android) or Safari (iOS).
+3. Use the browser's "Add to Home Screen" option. The app icon installs
+   as a standalone, chromeless launcher.
+4. The service worker caches the shell + static assets on first load. The
+   app then runs offline for up to 60 minutes of scanning, queueing all
+   scans in IndexedDB with idempotency keys for deterministic replay
+   when the network returns (AC #8).
+
+Inputs supported:
+
+- **Bluetooth HID scanner** (the most common kit on store floors). The
+  barcode input is auto-focused so the scanner can fire scans without
+  any extra taps.
+- **Camera barcode scan** via the `BarcodeDetector` API (Chrome / Edge /
+  modern Android). On unsupported browsers the camera button is
+  disabled and the hardware-scanner / typed input remain available.
+
+Concurrent multi-scanner: every section open in the PWA acquires a
+soft-lock visible to other scanners on the section list as `🔒 [name]`.
+A section in another user's lock window cannot be opened (AC #14).
+Three scanners working three different sections of the same session
+operate against independent rows, so AC #13 holds.
+
 ## Running tests
 
 ```bash
@@ -102,6 +135,19 @@ with unreconciled sections), #5 (re-scan loop and bounce-from-review
 isolation), #7 (variance band routing), #10 (scan-event immutability),
 #11 (variance reason required), #14 (soft-lock visibility), and #18
 (reconciliation immutability).
+
+Phase 2 tests (`test_review_ui.py`) cover reviewer auto-set, ETA + progress
+computes, variance summary, approval-wizard blocker logic, bounce wizard,
+and view-load smoke.
+
+Phase 3 tests cover #6 (scan-once-type-qty), #8 (50-scan idempotent
+replay), #13 (three scanners interleaved with no scan loss), and #14
+reinforced at the PWA-API layer.
+
+A separate Postgres-level concurrency probe that exercises real
+multi-process row-locking is out of Phase 3 scope and lives in the QA
+harness — Odoo's `TransactionCase` runs inside one transaction and cannot
+exercise inter-transaction locking from within a single test process.
 
 ## Open / deferred
 

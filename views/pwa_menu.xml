@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Link to the mobile counting app from the backend menu.
+         Counters and store managers will normally install the PWA on their
+         device home screen; the backend link is the fallback / quick test
+         path from a desktop browser. -->
+    <record id="action_vivo_count_pwa" model="ir.actions.act_url">
+        <field name="name">Open Mobile App</field>
+        <field name="url">/vivo-count/pwa</field>
+        <field name="target">new</field>
+    </record>
+
+    <menuitem id="menu_vivo_count_pwa"
+              name="Mobile App"
+              parent="menu_vivo_count_root"
+              action="action_vivo_count_pwa"
+              sequence="5"/>
+</odoo>

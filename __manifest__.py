@@ -43,6 +43,7 @@ Phase 1 scope:
         "views/reconciliation_views.xml",
         "views/res_config_settings_views.xml",
         "views/menu_views.xml",
+        "views/pwa_menu.xml",
     ],
     "assets": {
         "web.assets_backend": [

@@ -48,6 +48,10 @@ class VivoCountSection(models.Model):
     locked_by_id = fields.Many2one("res.users", string="In Progress — User", copy=False)
     locked_at = fields.Datetime(copy=False)
 
+    # PWA physical-submit idempotency: stores the last accepted key so
+    # offline replay does not double-submit (AC #8).
+    last_physical_idem_key = fields.Char(readonly=True, copy=False)
+
     has_unresolved_no_barcode = fields.Boolean(compute="_compute_no_barcode")
 
     _sql_constraints = [
@@ -205,6 +209,97 @@ class VivoCountSection(models.Model):
                     )
                     % section.name
                 )
+
+    # ------------------------------------------------------------------
+    # PWA API (Phase 3)
+    # ------------------------------------------------------------------
+    @api.model
+    def list_for_pwa(self, session_id):
+        """Return the section list a counter needs to drive the PWA UI."""
+        sections = self.search(
+            [("session_id", "=", session_id)], order="zone_id, sequence, name"
+        )
+        return [
+            {
+                "id": s.id,
+                "name": s.name,
+                "zone_id": s.zone_id.id,
+                "zone_name": s.zone_id.name,
+                "state": s.state,
+                "rescan_count": s.rescan_count,
+                "scan_total_qty": s.scan_total_qty,
+                "physical_total_qty": s.physical_total_qty,
+                "scanner_id": s.scanner_id.id,
+                "scanner_name": s.scanner_id.name or "",
+                "physical_counter_id": s.physical_counter_id.id,
+                "physical_counter_name": s.physical_counter_id.name or "",
+                "locked_by_id": s.locked_by_id.id,
+                "locked_by_name": s.locked_by_id.name or "",
+                "is_mine": s.locked_by_id.id == self.env.uid
+                or s.scanner_id.id == self.env.uid,
+            }
+            for s in sections
+        ]
+
+    def open_for_scanning(self):
+        """Atomic: acquire soft-lock + transition to scanning state.
+
+        Used by the PWA when a scanner picks a rack. If a different user
+        already holds the lock within the idle window, raises UserError
+        (AC #14). The same user re-opening is a no-op.
+        """
+        self.ensure_one()
+        self.acquire_lock()
+        if self.state in {"draft", "variance_rescan"}:
+            self.action_start_scanning()
+        elif self.state == "scanning":
+            # Already scanning, ensure scanner_id is current.
+            if not self.scanner_id:
+                self.scanner_id = self.env.uid
+        else:
+            raise UserError(
+                _("Section %s is not available for scanning (state: %s).")
+                % (self.name, self.state)
+            )
+        return {
+            "id": self.id,
+            "state": self.state,
+            "scanner_id": self.scanner_id.id,
+            "scan_total_qty": self.scan_total_qty,
+        }
+
+    def finish_scanning_pwa(self):
+        self.ensure_one()
+        self.action_finish_scanning()
+        return {"id": self.id, "state": self.state}
+
+    def submit_physical_pwa(self, physical_qty, idempotency_key=None):
+        """Physical counter submits their independent headcount.
+
+        Idempotent: if `idempotency_key` matches the last accepted key, the
+        submission is treated as a replay and current state is returned
+        without re-applying. Supports Phase 3 offline drain.
+        """
+        self.ensure_one()
+        if idempotency_key and self.last_physical_idem_key == idempotency_key:
+            return {
+                "id": self.id,
+                "state": self.state,
+                "idempotent": True,
+                "scan_total_qty": self.scan_total_qty,
+                "physical_total_qty": self.physical_total_qty,
+                "is_reconciled": self.is_reconciled,
+            }
+        self.action_submit_physical_count(physical_qty=physical_qty)
+        if idempotency_key:
+            self.last_physical_idem_key = idempotency_key
+        return {
+            "id": self.id,
+            "state": self.state,
+            "scan_total_qty": self.scan_total_qty,
+            "physical_total_qty": self.physical_total_qty,
+            "is_reconciled": self.is_reconciled,
+        }
 
     @api.constrains("state", "scan_total_qty", "physical_total_qty")
     def _check_reconcile_match(self):

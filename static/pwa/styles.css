@@ -1,0 +1,167 @@
+/* Vivo Count — minimal, touch-first PWA styles. */
+:root {
+    --brand: #0066cc;
+    --bg: #f3f4f6;
+    --card: #ffffff;
+    --border: #e5e7eb;
+    --text: #111827;
+    --muted: #6b7280;
+    --green: #198754;
+    --amber: #ffc107;
+    --orange: #fd7e14;
+    --red: #dc3545;
+    --gray: #adb5bd;
+}
+
+* { box-sizing: border-box; }
+html, body {
+    margin: 0;
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-tap-highlight-color: transparent;
+}
+#app {
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+#app-header {
+    background: var(--brand);
+    color: #fff;
+    padding: 14px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+#app-header .title { font-weight: 700; }
+.net {
+    font-size: 0.8em;
+    padding: 2px 8px;
+    border-radius: 99px;
+    background: rgba(255,255,255,0.2);
+}
+.net.online { background: #198754; }
+.net.offline { background: #dc3545; }
+
+#app-main { flex: 1; padding: 12px; }
+.screen { display: flex; flex-direction: column; gap: 12px; }
+.back { color: var(--muted); cursor: pointer; font-size: 0.9em; }
+h2 { margin: 4px 0; font-size: 1.3em; }
+h3 { margin: 0; color: var(--muted); font-size: 1em; }
+
+.list { display: flex; flex-direction: column; gap: 8px; }
+.row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--card);
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+    width: 100%;
+}
+.row:disabled { opacity: 0.55; cursor: not-allowed; }
+.row .col { display: flex; flex-direction: column; gap: 2px; }
+.row small { color: var(--muted); }
+.row .chev { color: var(--muted); }
+.row .meta { color: var(--muted); font-size: 0.85em; }
+.list.compact .row { padding: 10px 12px; }
+.row.compact { padding: 10px 12px; }
+.qty { font-weight: 700; }
+
+.row.state-draft       { border-left: 6px solid var(--gray); }
+.row.state-scanning    { border-left: 6px solid var(--amber); }
+.row.state-physical_count { border-left: 6px solid var(--orange); }
+.row.state-variance_rescan { border-left: 6px solid var(--red); background: #fdecea; }
+.row.state-reconciled  { border-left: 6px solid var(--green); background: #f0faf4; }
+
+.empty { color: var(--muted); text-align: center; padding: 24px; }
+.alert { background: #fdecea; color: #9b1c1c; padding: 12px; border-radius: 8px; }
+
+.scan-bar {
+    display: flex;
+    gap: 8px;
+}
+.scan-bar input {
+    flex: 1;
+    font-size: 1.2em;
+    padding: 14px;
+    border: 2px solid var(--brand);
+    border-radius: 8px;
+}
+.scan-bar input:focus { outline: none; border-color: #003d80; }
+
+.last-scan { min-height: 32px; }
+.last-scan .ok { color: var(--green); }
+.last-scan .ok.queued { color: var(--orange); }
+.last-scan .warn { color: var(--red); }
+
+.totals {
+    display: flex;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 1.1em;
+}
+.actions { display: flex; gap: 8px; }
+.btn {
+    padding: 14px 18px;
+    border-radius: 8px;
+    border: 0;
+    font-size: 1em;
+    font-weight: 600;
+    cursor: pointer;
+    flex: 1;
+}
+.btn.primary { background: var(--brand); color: #fff; }
+.btn.ghost   { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+
+.physical .big-input input {
+    width: 100%;
+    font-size: 3em;
+    padding: 24px;
+    text-align: center;
+    border: 2px solid var(--brand);
+    border-radius: 12px;
+}
+.hint { color: var(--muted); }
+.reveal {
+    padding: 16px;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.reveal.ok   { background: #e8f5e9; color: #14532d; }
+.reveal.warn { background: #fdecea; color: #7f1d1d; }
+
+#app-footer {
+    background: var(--card);
+    border-top: 1px solid var(--border);
+    padding: 10px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.9em;
+    color: var(--muted);
+    position: sticky;
+    bottom: 0;
+}
+.badge {
+    background: var(--orange);
+    color: #fff;
+    padding: 2px 8px;
+    border-radius: 99px;
+    font-size: 0.85em;
+}
+.hidden { display: none; }

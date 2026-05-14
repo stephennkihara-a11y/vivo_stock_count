@@ -1,0 +1,18 @@
+{
+  "name": "Vivo Stock Count",
+  "short_name": "Vivo Count",
+  "start_url": "/vivo-count/pwa",
+  "scope": "/vivo-count/pwa",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0066cc",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/vivo_stock_count/static/pwa/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

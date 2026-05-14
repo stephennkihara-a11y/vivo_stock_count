@@ -95,3 +95,97 @@ class VivoCountLine(models.Model):
                         "SKU before reconciliation."
                     )
                 )
+
+    # ------------------------------------------------------------------
+    # PWA API (Phase 3)
+    # ------------------------------------------------------------------
+    @api.model
+    def record_scan(
+        self,
+        section_id,
+        product_id,
+        scanned_qty,
+        idempotency_key,
+        device_id=None,
+    ):
+        """Idempotent scan-and-increment endpoint for the mobile PWA.
+
+        Contract (AC #6, AC #8):
+        - Each scan event carries a client-generated idempotency_key.
+        - If the key was already submitted, the existing event is returned
+          and no quantity is added — replay is a no-op.
+        - Otherwise a new scan_event is logged AND the line's counted_qty
+          is incremented by `scanned_qty` (scan-once-then-type-qty: one scan
+          event with scanned_qty=6 → counted_qty +=6, scan_count +=1).
+        - On the first scan of an SKU in a section, the line is created.
+        """
+        if not idempotency_key:
+            raise ValidationError(_("idempotency_key is required."))
+        Section = self.env["vivo.count.section"]
+        section = Section.browse(section_id).exists()
+        if not section:
+            raise ValidationError(_("Section not found."))
+        if section.state not in {"scanning", "variance_rescan"}:
+            raise ValidationError(
+                _("Section %s is not open for scanning (state: %s).")
+                % (section.name, section.state)
+            )
+        ScanEvent = self.env["vivo.count.scan.event"]
+        existing = ScanEvent.search(
+            [("idempotency_key", "=", idempotency_key)], limit=1
+        )
+        if existing:
+            return {
+                "idempotent": True,
+                "scan_event_id": existing.id,
+                "line_id": existing.line_id.id,
+                "counted_qty": existing.line_id.counted_qty,
+                "scan_count": existing.line_id.scan_count,
+            }
+        product = self.env["product.product"].browse(product_id).exists()
+        if not product:
+            raise ValidationError(_("Product not found."))
+        line = self.search(
+            [("section_id", "=", section.id), ("product_id", "=", product.id)],
+            limit=1,
+        )
+        scan_type = "rescan" if section.state == "variance_rescan" else "initial"
+        if not line:
+            # Pull the system snapshot if it was captured at session start; if
+            # the SKU wasn't in scope (new arrival), system_qty stays 0.
+            line = self.create(
+                {
+                    "section_id": section.id,
+                    "product_id": product.id,
+                    "system_qty": 0.0,
+                    "counted_qty": 0.0,
+                    "unit_cost": product.standard_price,
+                    "counter_id": self.env.uid,
+                    "scanned_at": fields.Datetime.now(),
+                }
+            )
+        line.write(
+            {
+                "counted_qty": (line.counted_qty or 0.0) + scanned_qty,
+                "scan_count": (line.scan_count or 0) + 1,
+                "counter_id": self.env.uid,
+                "scanned_at": fields.Datetime.now(),
+            }
+        )
+        event = ScanEvent.sudo().create(
+            {
+                "line_id": line.id,
+                "counter_id": self.env.uid,
+                "scanned_qty": scanned_qty,
+                "scan_type": scan_type,
+                "idempotency_key": idempotency_key,
+                "device_id": device_id or "",
+            }
+        )
+        return {
+            "idempotent": False,
+            "scan_event_id": event.id,
+            "line_id": line.id,
+            "counted_qty": line.counted_qty,
+            "scan_count": line.scan_count,
+        }
