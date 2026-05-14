@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <menuitem id="menu_vivo_count_root" name="Stock Count" sequence="65" web_icon="vivo_stock_count,static/description/icon.png"/>
+
+    <menuitem id="menu_vivo_count_sessions" name="Count Sessions" parent="menu_vivo_count_root" action="action_vivo_count_session" sequence="10"/>
+    <menuitem id="menu_vivo_count_sections" name="Sections" parent="menu_vivo_count_root" action="action_vivo_count_section" sequence="20"/>
+    <menuitem id="menu_vivo_count_reconciliations" name="Reconciliations" parent="menu_vivo_count_root" action="action_vivo_reconciliation" sequence="30"/>
+
+    <menuitem id="menu_vivo_count_config" name="Configuration" parent="menu_vivo_count_root" sequence="90" groups="vivo_stock_count.group_vivo_count_store_manager"/>
+    <menuitem id="menu_vivo_count_zones" name="Zones" parent="menu_vivo_count_config" action="action_vivo_count_zone" sequence="10"/>
+    <menuitem id="menu_vivo_count_section_templates" name="Rack Templates" parent="menu_vivo_count_config" action="action_vivo_section_template" sequence="20"/>
+    <menuitem id="menu_vivo_count_scan_events" name="Scan Audit Log" parent="menu_vivo_count_config" action="action_vivo_scan_event" sequence="50" groups="vivo_stock_count.group_vivo_count_regional"/>
+</odoo>

@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_vivo_count_section_list" model="ir.ui.view">
+        <field name="name">vivo.count.section.list</field>
+        <field name="model">vivo.count.section</field>
+        <field name="arch" type="xml">
+            <list string="Sections">
+                <field name="session_id"/>
+                <field name="zone_id"/>
+                <field name="name"/>
+                <field name="scanner_id"/>
+                <field name="physical_counter_id"/>
+                <field name="scan_total_qty"/>
+                <field name="physical_total_qty"/>
+                <field name="rescan_count"/>
+                <field name="state" widget="badge"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_vivo_count_section_form" model="ir.ui.view">
+        <field name="name">vivo.count.section.form</field>
+        <field name="model">vivo.count.section</field>
+        <field name="arch" type="xml">
+            <form string="Section">
+                <header>
+                    <button name="action_start_scanning" type="object" string="Start Scanning" class="btn-primary" invisible="state not in ('draft','variance_rescan')"/>
+                    <button name="action_finish_scanning" type="object" string="Finish Scanning" class="btn-primary" invisible="state != 'scanning'"/>
+                    <button name="action_submit_physical_count" type="object" string="Submit Physical Count" class="btn-primary" invisible="state != 'physical_count'"/>
+                    <field name="state" widget="statusbar"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="session_id"/>
+                            <field name="zone_id"/>
+                            <field name="sequence"/>
+                        </group>
+                        <group>
+                            <field name="scanner_id"/>
+                            <field name="physical_counter_id"/>
+                            <field name="scan_total_qty"/>
+                            <field name="physical_total_qty"/>
+                            <field name="rescan_count"/>
+                            <field name="reconciled_at"/>
+                            <field name="locked_by_id"/>
+                            <field name="locked_at"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Lines">
+                            <field name="line_ids">
+                                <list editable="bottom">
+                                    <field name="product_id"/>
+                                    <field name="system_qty"/>
+                                    <field name="counted_qty"/>
+                                    <field name="difference"/>
+                                    <field name="variance_reason"/>
+                                    <field name="variance_note"/>
+                                    <field name="no_barcode_flag"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_vivo_count_section" model="ir.actions.act_window">
+        <field name="name">Sections</field>
+        <field name="res_model">vivo.count.section</field>
+        <field name="view_mode">list,form</field>
+    </record>
+</odoo>

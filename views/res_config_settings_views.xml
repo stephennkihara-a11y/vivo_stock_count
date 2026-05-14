@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_vivo_count_res_config_settings" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.inherit.vivo.count</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="base.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//form" position="inside">
+                <app data-string="Vivo Stock Count" string="Vivo Stock Count" name="vivo_stock_count">
+                    <block title="Approval Bands" name="bands">
+                        <setting string="Store Manager band (KES)">
+                            <field name="vivo_count_store_band_kes"/>
+                        </setting>
+                        <setting string="Regional Manager band (KES)">
+                            <field name="vivo_count_regional_band_kes"/>
+                        </setting>
+                    </block>
+                    <block title="Counting" name="counting">
+                        <setting string="Physical count mode">
+                            <field name="vivo_count_physical_count_mode"/>
+                        </setting>
+                        <setting string="Section idle lock (minutes)">
+                            <field name="vivo_count_section_lock_minutes"/>
+                        </setting>
+                        <setting string="Store trading deadline">
+                            <field name="vivo_count_trading_deadline"/>
+                        </setting>
+                    </block>
+                    <block title="Audit" name="audit">
+                        <setting string="Audit notification group">
+                            <field name="vivo_count_audit_notify_group_id"/>
+                        </setting>
+                        <setting string="FX source">
+                            <field name="vivo_count_fx_source"/>
+                        </setting>
+                    </block>
+                </app>
+            </xpath>
+        </field>
+    </record>
+</odoo>

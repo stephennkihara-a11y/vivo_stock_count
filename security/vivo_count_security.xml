@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="0">
+
+        <!-- Module category -->
+        <record id="module_category_vivo_count" model="ir.module.category">
+            <field name="name">Vivo Stock Count</field>
+            <field name="description">Vivo Fashion Group retail stock count workflow</field>
+            <field name="sequence">20</field>
+        </record>
+
+        <!-- Groups, lowest-privilege first. Each higher group implies the one below it. -->
+        <record id="group_vivo_count_counter" model="res.groups">
+            <field name="name">Counter</field>
+            <field name="category_id" ref="module_category_vivo_count"/>
+            <field name="implied_ids" eval="[(4, ref('stock.group_stock_user'))]"/>
+        </record>
+
+        <record id="group_vivo_count_store_manager" model="res.groups">
+            <field name="name">Store Manager</field>
+            <field name="category_id" ref="module_category_vivo_count"/>
+            <field name="implied_ids" eval="[(4, ref('group_vivo_count_counter'))]"/>
+        </record>
+
+        <record id="group_vivo_count_regional" model="res.groups">
+            <field name="name">Regional Manager</field>
+            <field name="category_id" ref="module_category_vivo_count"/>
+            <field name="implied_ids" eval="[(4, ref('group_vivo_count_store_manager'))]"/>
+        </record>
+
+        <record id="group_vivo_count_cfoo_audit" model="res.groups">
+            <field name="name">CFOO / Internal Audit</field>
+            <field name="category_id" ref="module_category_vivo_count"/>
+            <field name="implied_ids" eval="[(4, ref('group_vivo_count_regional'))]"/>
+        </record>
+
+        <!-- Record rules: store scoping.
+
+             Counters and Store Managers see only sessions where they are
+             listed (as scanner, physical counter, reviewer, or applied_by)
+             or that target their assigned store(s). Regionals see all.
+             CFOO/Audit sees all.
+
+             Multi-company scoping is the standard res.company test on top. -->
+
+        <record id="rule_session_counter_own" model="ir.rule">
+            <field name="name">Count Session — counter sees only own work</field>
+            <field name="model_id" ref="model_vivo_count_session"/>
+            <field name="domain_force">[
+                '|','|','|','|',
+                ('section_ids.scanner_id','=',user.id),
+                ('section_ids.physical_counter_id','=',user.id),
+                ('reviewer_id','=',user.id),
+                ('approver_id','=',user.id),
+                ('applied_by_id','=',user.id),
+            ]</field>
+            <field name="groups" eval="[(4, ref('group_vivo_count_counter'))]"/>
+            <field name="perm_read" eval="1"/>
+            <field name="perm_write" eval="0"/>
+            <field name="perm_create" eval="0"/>
+            <field name="perm_unlink" eval="0"/>
+        </record>
+
+        <record id="rule_session_store_manager" model="ir.rule">
+            <field name="name">Count Session — store manager sees own store</field>
+            <field name="model_id" ref="model_vivo_count_session"/>
+            <field name="domain_force">[('company_id','in',company_ids)]</field>
+            <field name="groups" eval="[(4, ref('group_vivo_count_store_manager'))]"/>
+        </record>
+
+        <record id="rule_session_regional_all" model="ir.rule">
+            <field name="name">Count Session — regional sees all</field>
+            <field name="model_id" ref="model_vivo_count_session"/>
+            <field name="domain_force">[(1,'=',1)]</field>
+            <field name="groups" eval="[(4, ref('group_vivo_count_regional'))]"/>
+        </record>
+
+        <!-- Section rule mirrors session rule via inheritance from session_id -->
+        <record id="rule_section_counter" model="ir.rule">
+            <field name="name">Count Section — counter sees only own sections</field>
+            <field name="model_id" ref="model_vivo_count_section"/>
+            <field name="domain_force">[
+                '|','|',
+                ('scanner_id','=',user.id),
+                ('physical_counter_id','=',user.id),
+                ('locked_by_id','=',user.id),
+            ]</field>
+            <field name="groups" eval="[(4, ref('group_vivo_count_counter'))]"/>
+            <field name="perm_unlink" eval="0"/>
+        </record>
+
+        <record id="rule_section_store_manager" model="ir.rule">
+            <field name="name">Count Section — store manager full visibility</field>
+            <field name="model_id" ref="model_vivo_count_section"/>
+            <field name="domain_force">[(1,'=',1)]</field>
+            <field name="groups" eval="[(4, ref('group_vivo_count_store_manager'))]"/>
+        </record>
+
+        <!-- Reconciliation: every authenticated user in any vivo_count group
+             can read; nobody can write or unlink (AC #18). -->
+        <record id="rule_reconciliation_read_all" model="ir.rule">
+            <field name="name">Reconciliation — read for all count users</field>
+            <field name="model_id" ref="model_vivo_count_reconciliation"/>
+            <field name="domain_force">[(1,'=',1)]</field>
+            <field name="groups" eval="[(4, ref('group_vivo_count_counter'))]"/>
+            <field name="perm_read" eval="1"/>
+            <field name="perm_write" eval="0"/>
+            <field name="perm_create" eval="0"/>
+            <field name="perm_unlink" eval="0"/>
+        </record>
+
+    </data>
+</odoo>

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_vivo_section_template_list" model="ir.ui.view">
+        <field name="name">vivo.count.section.template.list</field>
+        <field name="model">vivo.count.section.template</field>
+        <field name="arch" type="xml">
+            <list string="Rack Templates">
+                <field name="zone_id"/>
+                <field name="name"/>
+                <field name="location_id"/>
+                <field name="active"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_vivo_section_template" model="ir.actions.act_window">
+        <field name="name">Rack Templates</field>
+        <field name="res_model">vivo.count.section.template</field>
+        <field name="view_mode">list,form</field>
+    </record>
+</odoo>

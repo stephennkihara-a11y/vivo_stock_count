@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_vivo_count_zone_list" model="ir.ui.view">
+        <field name="name">vivo.count.zone.list</field>
+        <field name="model">vivo.count.zone</field>
+        <field name="arch" type="xml">
+            <list string="Zones">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="location_id"/>
+                <field name="section_template_count"/>
+                <field name="active" invisible="1"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_vivo_count_zone_form" model="ir.ui.view">
+        <field name="name">vivo.count.zone.form</field>
+        <field name="model">vivo.count.zone</field>
+        <field name="arch" type="xml">
+            <form string="Zone">
+                <sheet>
+                    <group>
+                        <field name="name"/>
+                        <field name="location_id"/>
+                        <field name="sequence"/>
+                        <field name="active"/>
+                    </group>
+                    <notebook>
+                        <page string="Rack Templates">
+                            <field name="section_template_ids">
+                                <list editable="bottom">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="name"/>
+                                    <field name="note"/>
+                                    <field name="active"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_vivo_count_zone" model="ir.actions.act_window">
+        <field name="name">Zones</field>
+        <field name="res_model">vivo.count.zone</field>
+        <field name="view_mode">list,form</field>
+    </record>
+</odoo>

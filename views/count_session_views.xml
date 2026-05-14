@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_vivo_count_session_list" model="ir.ui.view">
+        <field name="name">vivo.count.session.list</field>
+        <field name="model">vivo.count.session</field>
+        <field name="arch" type="xml">
+            <list string="Count Sessions">
+                <field name="name"/>
+                <field name="location_id"/>
+                <field name="zone_id"/>
+                <field name="scheduled_date"/>
+                <field name="sections_reconciled"/>
+                <field name="sections_total"/>
+                <field name="variance_value" widget="monetary"/>
+                <field name="tolerance_band"/>
+                <field name="state" decoration-info="state == 'draft'" decoration-warning="state in ('in_progress','counted','review')" decoration-success="state in ('approved','applied')" decoration-danger="state == 'cancelled'" widget="badge"/>
+                <field name="currency_id" column_invisible="1"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_vivo_count_session_form" model="ir.ui.view">
+        <field name="name">vivo.count.session.form</field>
+        <field name="model">vivo.count.session</field>
+        <field name="arch" type="xml">
+            <form string="Count Session">
+                <header>
+                    <button name="action_start" string="Start Count" type="object" class="btn-primary" invisible="state != 'draft'"/>
+                    <button name="action_submit_for_review" string="Submit for Review" type="object" class="btn-primary" invisible="state not in ('in_progress','counted')"/>
+                    <button name="action_approve" string="Approve" type="object" class="btn-primary" invisible="state != 'review'"/>
+                    <button name="action_apply" string="Post to Inventory" type="object" class="btn-primary" invisible="state != 'approved'"/>
+                    <button name="action_cancel" string="Cancel" type="object" invisible="state in ('applied','cancelled')"/>
+                    <button name="action_reset_to_draft" string="Reset to Draft" type="object" invisible="state != 'cancelled'"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,in_progress,counted,review,approved,applied"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" readonly="1"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="location_id" readonly="state != 'draft'"/>
+                            <field name="zone_id" readonly="state != 'draft'"/>
+                            <field name="category_ids" widget="many2many_tags" readonly="state != 'draft'"/>
+                            <field name="scheduled_date" readonly="state != 'draft'"/>
+                            <field name="start_date" readonly="1"/>
+                            <field name="end_date" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="sections_reconciled"/>
+                            <field name="sections_total"/>
+                            <field name="sections_outstanding"/>
+                            <field name="variance_value" widget="monetary"/>
+                            <field name="tolerance_band"/>
+                            <field name="reviewer_id"/>
+                            <field name="approver_id"/>
+                            <field name="applied_by_id" readonly="1"/>
+                            <field name="currency_id" invisible="1"/>
+                            <field name="company_id" invisible="1"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Sections">
+                            <field name="section_ids">
+                                <list>
+                                    <field name="sequence"/>
+                                    <field name="name"/>
+                                    <field name="zone_id"/>
+                                    <field name="scanner_id"/>
+                                    <field name="physical_counter_id"/>
+                                    <field name="scan_total_qty"/>
+                                    <field name="physical_total_qty"/>
+                                    <field name="rescan_count"/>
+                                    <field name="state" widget="badge"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Lines">
+                            <field name="line_ids">
+                                <list>
+                                    <field name="section_id"/>
+                                    <field name="product_id"/>
+                                    <field name="system_qty"/>
+                                    <field name="counted_qty"/>
+                                    <field name="difference"/>
+                                    <field name="variance_value"/>
+                                    <field name="variance_reason"/>
+                                    <field name="currency_id" column_invisible="1"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Notes">
+                            <field name="notes"/>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_vivo_count_session" model="ir.actions.act_window">
+        <field name="name">Count Sessions</field>
+        <field name="res_model">vivo.count.session</field>
+        <field name="view_mode">list,form</field>
+    </record>
+</odoo>
