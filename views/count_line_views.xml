@@ -4,10 +4,12 @@
         <field name="name">vivo.count.line.list</field>
         <field name="model">vivo.count.line</field>
         <field name="arch" type="xml">
-            <list string="Count Lines">
+            <list string="Count Lines" decoration-danger="difference &lt; 0" decoration-success="difference &gt; 0">
                 <field name="session_id"/>
                 <field name="section_id"/>
+                <field name="zone_id"/>
                 <field name="product_id"/>
+                <field name="barcode"/>
                 <field name="system_qty"/>
                 <field name="counted_qty"/>
                 <field name="difference"/>
@@ -18,9 +20,62 @@
         </field>
     </record>
 
+    <!-- Variance dashboard: pivot -->
+    <record id="view_vivo_count_line_pivot" model="ir.ui.view">
+        <field name="name">vivo.count.line.pivot</field>
+        <field name="model">vivo.count.line</field>
+        <field name="arch" type="xml">
+            <pivot string="Variance Analysis" sample="1">
+                <field name="zone_id" type="row"/>
+                <field name="section_id" type="row"/>
+                <field name="variance_reason" type="col"/>
+                <field name="difference" type="measure"/>
+                <field name="variance_value" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <!-- Variance dashboard: graph -->
+    <record id="view_vivo_count_line_graph" model="ir.ui.view">
+        <field name="name">vivo.count.line.graph</field>
+        <field name="model">vivo.count.line</field>
+        <field name="arch" type="xml">
+            <graph string="Variance by Reason" sample="1" type="bar">
+                <field name="variance_reason"/>
+                <field name="variance_value" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <record id="view_vivo_count_line_search" model="ir.ui.view">
+        <field name="name">vivo.count.line.search</field>
+        <field name="model">vivo.count.line</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="product_id"/>
+                <field name="session_id"/>
+                <field name="section_id"/>
+                <field name="zone_id"/>
+                <field name="variance_reason"/>
+                <filter name="filter_with_variance" string="With Variance" domain="[('difference','!=',0)]"/>
+                <filter name="filter_shortage" string="Shortage" domain="[('difference','&lt;',0)]"/>
+                <filter name="filter_overage" string="Overage" domain="[('difference','&gt;',0)]"/>
+                <filter name="filter_unreasoned" string="No Reason" domain="[('difference','!=',0),('variance_reason','=',False)]"/>
+                <group string="Group By">
+                    <filter name="group_zone" string="Zone" context="{'group_by':'zone_id'}"/>
+                    <filter name="group_section" string="Section" context="{'group_by':'section_id'}"/>
+                    <filter name="group_reason" string="Reason" context="{'group_by':'variance_reason'}"/>
+                    <filter name="group_session" string="Session" context="{'group_by':'session_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
     <record id="action_vivo_count_line" model="ir.actions.act_window">
-        <field name="name">Count Lines</field>
+        <field name="name">Variance Analysis</field>
         <field name="res_model">vivo.count.line</field>
-        <field name="view_mode">list,form</field>
+        <field name="view_mode">pivot,graph,list</field>
+        <field name="search_view_id" ref="view_vivo_count_line_search"/>
+        <field name="context">{"search_default_filter_with_variance": 1}</field>
     </record>
 </odoo>

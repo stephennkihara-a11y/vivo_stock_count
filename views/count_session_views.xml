@@ -1,10 +1,96 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
+
+    <!-- Search view: state, store, my sessions, this week, at risk, band -->
+    <record id="view_vivo_count_session_search" model="ir.ui.view">
+        <field name="name">vivo.count.session.search</field>
+        <field name="model">vivo.count.session</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="location_id"/>
+                <field name="zone_id"/>
+                <field name="reviewer_id"/>
+                <field name="approver_id"/>
+
+                <filter name="filter_my_sessions" string="My Sessions" domain="['|','|','|','|',('section_ids.scanner_id','=',uid),('section_ids.physical_counter_id','=',uid),('reviewer_id','=',uid),('approver_id','=',uid),('applied_by_id','=',uid)]"/>
+                <filter name="filter_open" string="In Progress" domain="[('state','in',['in_progress','counted'])]"/>
+                <filter name="filter_review" string="Awaiting Review" domain="[('state','=','review')]"/>
+                <filter name="filter_approved" string="Approved" domain="[('state','=','approved')]"/>
+                <filter name="filter_applied" string="Applied" domain="[('state','=','applied')]"/>
+                <separator/>
+                <filter name="filter_at_risk" string="Trading-deadline At Risk" domain="[('is_behind_trading_deadline','=',True)]"/>
+                <filter name="filter_cfoo_band" string="CFOO Band" domain="[('tolerance_band','=','cfoo')]"/>
+                <filter name="filter_regional_band" string="Regional Band" domain="[('tolerance_band','=','regional')]"/>
+                <separator/>
+                <filter name="filter_this_week" string="Scheduled This Week" date="scheduled_date"/>
+
+                <group string="Group By">
+                    <filter name="group_state" string="State" context="{'group_by':'state'}"/>
+                    <filter name="group_location" string="Store" context="{'group_by':'location_id'}"/>
+                    <filter name="group_band" string="Variance Band" context="{'group_by':'tolerance_band'}"/>
+                    <filter name="group_reviewer" string="Reviewer" context="{'group_by':'reviewer_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Kanban grouped by state -->
+    <record id="view_vivo_count_session_kanban" model="ir.ui.view">
+        <field name="name">vivo.count.session.kanban</field>
+        <field name="model">vivo.count.session</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="state" class="o_kanban_small_column" sample="1">
+                <field name="state"/>
+                <field name="name"/>
+                <field name="location_id"/>
+                <field name="zone_id"/>
+                <field name="sections_reconciled"/>
+                <field name="sections_total"/>
+                <field name="sections_outstanding"/>
+                <field name="variance_value"/>
+                <field name="tolerance_band"/>
+                <field name="progress_pct"/>
+                <field name="is_behind_trading_deadline"/>
+                <field name="estimated_completion"/>
+                <field name="currency_id"/>
+                <templates>
+                    <t t-name="card">
+                        <div class="o_kanban_card_content">
+                            <div class="o_kanban_record_top">
+                                <strong class="o_kanban_record_title"><field name="name"/></strong>
+                                <span class="float-end" t-if="record.is_behind_trading_deadline.raw_value">
+                                    <i class="fa fa-warning text-danger" title="Trading deadline at risk"/>
+                                </span>
+                            </div>
+                            <div><field name="location_id"/></div>
+                            <div t-if="record.zone_id.raw_value">Zone: <field name="zone_id"/></div>
+                            <div class="mt-2">
+                                <span><field name="sections_reconciled"/>/<field name="sections_total"/> sections</span>
+                                <div class="progress" style="height:6px">
+                                    <div class="progress-bar" t-attf-style="width:#{record.progress_pct.raw_value}%"/>
+                                </div>
+                            </div>
+                            <div class="mt-2">
+                                <span class="badge text-bg-secondary"><field name="tolerance_band"/></span>
+                                <span class="float-end"><field name="variance_value" widget="monetary"/></span>
+                            </div>
+                            <div t-if="record.estimated_completion.raw_value" class="mt-1 text-muted small">
+                                ETA <field name="estimated_completion"/>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- List -->
     <record id="view_vivo_count_session_list" model="ir.ui.view">
         <field name="name">vivo.count.session.list</field>
         <field name="model">vivo.count.session</field>
         <field name="arch" type="xml">
-            <list string="Count Sessions">
+            <list string="Count Sessions" decoration-warning="is_behind_trading_deadline" decoration-success="state == 'applied'" decoration-info="state == 'draft'">
                 <field name="name"/>
                 <field name="location_id"/>
                 <field name="zone_id"/>
@@ -12,13 +98,16 @@
                 <field name="sections_reconciled"/>
                 <field name="sections_total"/>
                 <field name="variance_value" widget="monetary"/>
-                <field name="tolerance_band"/>
+                <field name="tolerance_band" widget="badge"/>
+                <field name="is_behind_trading_deadline" optional="hide"/>
+                <field name="estimated_completion" optional="hide"/>
                 <field name="state" decoration-info="state == 'draft'" decoration-warning="state in ('in_progress','counted','review')" decoration-success="state in ('approved','applied')" decoration-danger="state == 'cancelled'" widget="badge"/>
                 <field name="currency_id" column_invisible="1"/>
             </list>
         </field>
     </record>
 
+    <!-- Form: now with smart buttons, ETA panel, action buttons to open boards/wizards -->
     <record id="view_vivo_count_session_form" model="ir.ui.view">
         <field name="name">vivo.count.session.form</field>
         <field name="model">vivo.count.session</field>
@@ -27,13 +116,22 @@
                 <header>
                     <button name="action_start" string="Start Count" type="object" class="btn-primary" invisible="state != 'draft'"/>
                     <button name="action_submit_for_review" string="Submit for Review" type="object" class="btn-primary" invisible="state not in ('in_progress','counted')"/>
-                    <button name="action_approve" string="Approve" type="object" class="btn-primary" invisible="state != 'review'"/>
+                    <button name="action_open_approval_wizard" string="Review &amp; Approve" type="object" class="btn-primary" invisible="state != 'review'"/>
+                    <button name="action_open_bounce_wizard" string="Bounce Sections" type="object" invisible="state != 'review'"/>
                     <button name="action_apply" string="Post to Inventory" type="object" class="btn-primary" invisible="state != 'approved'"/>
                     <button name="action_cancel" string="Cancel" type="object" invisible="state in ('applied','cancelled')"/>
                     <button name="action_reset_to_draft" string="Reset to Draft" type="object" invisible="state != 'cancelled'"/>
                     <field name="state" widget="statusbar" statusbar_visible="draft,in_progress,counted,review,approved,applied"/>
                 </header>
                 <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button class="oe_stat_button" type="object" name="action_open_section_board" icon="fa-th-large">
+                            <field name="sections_total" string="Sections" widget="statinfo"/>
+                        </button>
+                        <button class="oe_stat_button" type="object" name="action_open_variance_dashboard" icon="fa-line-chart">
+                            <field name="variance_line_count" string="Variances" widget="statinfo"/>
+                        </button>
+                    </div>
                     <div class="oe_title">
                         <h1><field name="name" readonly="1"/></h1>
                     </div>
@@ -50,11 +148,25 @@
                             <field name="sections_reconciled"/>
                             <field name="sections_total"/>
                             <field name="sections_outstanding"/>
+                            <field name="progress_pct" widget="progressbar"/>
+                            <field name="minutes_per_section"/>
+                            <field name="estimated_completion"/>
+                            <field name="is_behind_trading_deadline" widget="boolean_toggle" readonly="1"/>
+                        </group>
+                    </group>
+                    <group string="Variance">
+                        <group>
                             <field name="variance_value" widget="monetary"/>
-                            <field name="tolerance_band"/>
+                            <field name="tolerance_band" widget="badge"/>
+                            <field name="variance_line_count"/>
+                            <field name="sections_with_variance"/>
+                            <field name="unreasoned_line_count"/>
+                        </group>
+                        <group>
                             <field name="reviewer_id"/>
                             <field name="approver_id"/>
                             <field name="applied_by_id" readonly="1"/>
+                            <field name="reconciliation_id" readonly="1"/>
                             <field name="currency_id" invisible="1"/>
                             <field name="company_id" invisible="1"/>
                         </group>
@@ -62,12 +174,13 @@
                     <notebook>
                         <page string="Sections">
                             <field name="section_ids">
-                                <list>
+                                <list decoration-success="state == 'reconciled'" decoration-warning="state in ('scanning','physical_count')" decoration-danger="state == 'variance_rescan'" decoration-muted="state == 'draft'">
                                     <field name="sequence"/>
                                     <field name="name"/>
                                     <field name="zone_id"/>
                                     <field name="scanner_id"/>
                                     <field name="physical_counter_id"/>
+                                    <field name="locked_by_id"/>
                                     <field name="scan_total_qty"/>
                                     <field name="physical_total_qty"/>
                                     <field name="rescan_count"/>
@@ -75,16 +188,17 @@
                                 </list>
                             </field>
                         </page>
-                        <page string="Lines">
-                            <field name="line_ids">
-                                <list>
+                        <page string="Variance Lines">
+                            <field name="line_ids" domain="[('difference', '!=', 0)]">
+                                <list editable="bottom">
                                     <field name="section_id"/>
                                     <field name="product_id"/>
                                     <field name="system_qty"/>
                                     <field name="counted_qty"/>
-                                    <field name="difference"/>
+                                    <field name="difference" decoration-danger="difference &lt; 0" decoration-success="difference &gt; 0"/>
                                     <field name="variance_value"/>
-                                    <field name="variance_reason"/>
+                                    <field name="variance_reason" required="difference != 0"/>
+                                    <field name="variance_note"/>
                                     <field name="currency_id" column_invisible="1"/>
                                 </list>
                             </field>
@@ -102,6 +216,8 @@
     <record id="action_vivo_count_session" model="ir.actions.act_window">
         <field name="name">Count Sessions</field>
         <field name="res_model">vivo.count.session</field>
-        <field name="view_mode">list,form</field>
+        <field name="view_mode">kanban,list,form</field>
+        <field name="search_view_id" ref="view_vivo_count_session_search"/>
+        <field name="context">{"search_default_filter_open": 1}</field>
     </record>
 </odoo>

@@ -1,0 +1,57 @@
+// Vivo Stock Count — section progress board
+//
+// Tile colours per spec Section 7.1:
+//   grey  -> draft
+//   amber -> scanning / physical_count
+//   red   -> variance_rescan
+//   green -> reconciled
+
+.o_vivo_section_board {
+
+    .o_vivo_section_tile {
+        padding: 12px;
+        border-radius: 6px;
+        border-left: 6px solid transparent;
+        background: var(--o-kanban-record-bg, #fff);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        min-height: 110px;
+        display: flex;
+        flex-direction: column;
+
+        .o_vivo_section_header {
+            font-size: 1.05em;
+            margin-bottom: 4px;
+        }
+
+        // grey — draft
+        &.state_draft {
+            border-left-color: #adb5bd;
+            background: #f8f9fa;
+            color: #495057;
+        }
+
+        // amber — scanning
+        &.state_scanning {
+            border-left-color: #ffc107;
+            background: #fff8e1;
+        }
+
+        // amber/orange — physical_count
+        &.state_physical_count {
+            border-left-color: #fd7e14;
+            background: #fff3e0;
+        }
+
+        // red — variance_rescan
+        &.state_variance_rescan {
+            border-left-color: #dc3545;
+            background: #fdecea;
+        }
+
+        // green — reconciled
+        &.state_reconciled {
+            border-left-color: #198754;
+            background: #e8f5e9;
+        }
+    }
+}

@@ -105,12 +105,29 @@ class VivoCountSession(models.Model):
         currency_field="currency_id",
         help="Absolute stock variance value across all lines — drives approval band.",
     )
+    variance_line_count = fields.Integer(
+        compute="_compute_variance_summary", store=True,
+    )
+    sections_with_variance = fields.Integer(
+        compute="_compute_variance_summary", store=True,
+    )
+    unreasoned_line_count = fields.Integer(
+        compute="_compute_variance_summary", store=True,
+    )
     tolerance_band = fields.Selection(
         [(BAND_AUTO, "Store Manager"), (BAND_REGIONAL, "Regional Manager"), (BAND_CFOO, "CFOO")],
         compute="_compute_tolerance_band",
         store=True,
     )
     notes = fields.Html()
+
+    # ETA / trading-deadline warning (live progress indicator, Spec 4.3)
+    minutes_per_section = fields.Float(
+        compute="_compute_eta", help="Rolling avg minutes per reconciled section.",
+    )
+    estimated_completion = fields.Datetime(compute="_compute_eta")
+    is_behind_trading_deadline = fields.Boolean(compute="_compute_eta")
+    progress_pct = fields.Float(compute="_compute_eta")
 
     # ------------------------------------------------------------------
     # Computes
@@ -131,6 +148,59 @@ class VivoCountSession(models.Model):
                 if line.section_id.state == "reconciled":
                     total += abs(line.variance_value)
             session.variance_value = total
+
+    @api.depends("line_ids.difference", "line_ids.variance_reason", "section_ids.state")
+    def _compute_variance_summary(self):
+        for session in self:
+            variance_lines = session.line_ids.filtered(
+                lambda l: l.section_id.state == "reconciled" and l.difference != 0.0
+            )
+            session.variance_line_count = len(variance_lines)
+            session.sections_with_variance = len(variance_lines.mapped("section_id"))
+            session.unreasoned_line_count = len(
+                variance_lines.filtered(lambda l: not l.variance_reason)
+            )
+
+    @api.depends(
+        "start_date",
+        "sections_total",
+        "sections_reconciled",
+        "state",
+    )
+    def _compute_eta(self):
+        from datetime import datetime, timedelta
+
+        Param = self.env["ir.config_parameter"].sudo()
+        deadline_str = Param.get_param("vivo_count.trading_deadline", "09:30")
+        try:
+            deadline_h, deadline_m = (int(p) for p in deadline_str.split(":"))
+        except (ValueError, AttributeError):
+            deadline_h, deadline_m = 9, 30
+
+        now = fields.Datetime.now()
+        for session in self:
+            total = session.sections_total or 0
+            done = session.sections_reconciled or 0
+            session.progress_pct = (done / total * 100.0) if total else 0.0
+            if (
+                session.start_date
+                and done > 0
+                and session.state in {"in_progress", "counted"}
+            ):
+                elapsed_seconds = (now - session.start_date).total_seconds()
+                per_section_seconds = elapsed_seconds / done
+                session.minutes_per_section = per_section_seconds / 60.0
+                remaining_seconds = per_section_seconds * (total - done)
+                eta = now + timedelta(seconds=remaining_seconds)
+                session.estimated_completion = eta
+                deadline_today = datetime(
+                    eta.year, eta.month, eta.day, deadline_h, deadline_m
+                )
+                session.is_behind_trading_deadline = eta > deadline_today
+            else:
+                session.minutes_per_section = 0.0
+                session.estimated_completion = False
+                session.is_behind_trading_deadline = False
 
     @api.depends("variance_value")
     def _compute_tolerance_band(self):
@@ -247,10 +317,27 @@ class VivoCountSession(models.Model):
                 }
             )
 
+    def _maybe_auto_advance_to_counted(self):
+        """in_progress -> counted when every section has reconciled.
+
+        Spec 4.1: 'The session auto-advances; it cannot reach this state
+        while any section is still unreconciled.'
+        """
+        for session in self:
+            if (
+                session.state == "in_progress"
+                and session.section_ids
+                and all(s.state == "reconciled" for s in session.section_ids)
+            ):
+                session.state = "counted"
+
     def action_submit_for_review(self):
         """in_progress -> counted -> review.
 
-        Auto-advances when all sections are reconciled (AC #4).
+        Auto-advances when all sections are reconciled (AC #4). Reviewer is
+        auto-set to the user clicking the button so the audit trail records
+        who actually performed the review action; manual override remains
+        available on the form.
         """
         self._ensure_state({"in_progress", "counted"})
         for session in self:
@@ -260,7 +347,12 @@ class VivoCountSession(models.Model):
                     _("Cannot submit for review — these sections are not reconciled: %s")
                     % ", ".join(outstanding.mapped("name"))
                 )
-            session.state = "review"
+            session.write(
+                {
+                    "state": "review",
+                    "reviewer_id": session.reviewer_id.id or self.env.user.id,
+                }
+            )
         return True
 
     def action_bounce_sections(self, section_ids):
@@ -384,6 +476,67 @@ class VivoCountSession(models.Model):
                 }
             )
         return True
+
+    def action_open_section_board(self):
+        """Open the colour-coded section progress board for this session."""
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Section Progress — %s") % self.name,
+            "res_model": "vivo.count.section",
+            "view_mode": "kanban,list,form",
+            "domain": [("session_id", "=", self.id)],
+            "context": {"default_session_id": self.id, "search_default_group_state": 1},
+            "views": [
+                (self.env.ref("vivo_stock_count.view_vivo_count_section_kanban").id, "kanban"),
+                (self.env.ref("vivo_stock_count.view_vivo_count_section_list").id, "list"),
+                (self.env.ref("vivo_stock_count.view_vivo_count_section_form").id, "form"),
+            ],
+        }
+
+    def action_open_variance_dashboard(self):
+        """Pivot dashboard on lines with non-zero variance for this session."""
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Variance Dashboard — %s") % self.name,
+            "res_model": "vivo.count.line",
+            "view_mode": "pivot,graph,list",
+            "domain": [
+                ("session_id", "=", self.id),
+                ("difference", "!=", 0),
+                ("section_id.state", "=", "reconciled"),
+            ],
+            "views": [
+                (self.env.ref("vivo_stock_count.view_vivo_count_line_pivot").id, "pivot"),
+                (self.env.ref("vivo_stock_count.view_vivo_count_line_graph").id, "graph"),
+                (self.env.ref("vivo_stock_count.view_vivo_count_line_list").id, "list"),
+            ],
+        }
+
+    def action_open_approval_wizard(self):
+        """Open the approval preview wizard — blockers + band + line summary."""
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Approve Count — %s") % self.name,
+            "res_model": "vivo.count.approval.wizard",
+            "view_mode": "form",
+            "target": "new",
+            "context": {"default_session_id": self.id},
+        }
+
+    def action_open_bounce_wizard(self):
+        """Open the bounce-sections wizard during review."""
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Bounce Sections — %s") % self.name,
+            "res_model": "vivo.count.bounce.wizard",
+            "view_mode": "form",
+            "target": "new",
+            "context": {"default_session_id": self.id},
+        }
 
     def action_cancel(self):
         for session in self:

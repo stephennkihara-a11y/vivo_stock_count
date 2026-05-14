@@ -1,15 +1,99 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
+
+    <!-- Search: state, scanner, zone, locked, my work -->
+    <record id="view_vivo_count_section_search" model="ir.ui.view">
+        <field name="name">vivo.count.section.search</field>
+        <field name="model">vivo.count.section</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="session_id"/>
+                <field name="zone_id"/>
+                <field name="scanner_id"/>
+                <field name="physical_counter_id"/>
+                <filter name="state_draft" string="Not Started" domain="[('state','=','draft')]"/>
+                <filter name="state_scanning" string="Scanning" domain="[('state','=','scanning')]"/>
+                <filter name="state_physical" string="Physical Count" domain="[('state','=','physical_count')]"/>
+                <filter name="state_variance" string="Variance Re-scan" domain="[('state','=','variance_rescan')]"/>
+                <filter name="state_reconciled" string="Reconciled" domain="[('state','=','reconciled')]"/>
+                <separator/>
+                <filter name="filter_mine" string="My Sections" domain="['|',('scanner_id','=',uid),('physical_counter_id','=',uid)]"/>
+                <filter name="filter_locked" string="In Progress (Locked)" domain="[('locked_by_id','!=',False)]"/>
+                <filter name="filter_rescanned" string="Has Re-scans" domain="[('rescan_count','&gt;',0)]"/>
+                <group string="Group By">
+                    <filter name="group_state" string="State" context="{'group_by':'state'}"/>
+                    <filter name="group_zone" string="Zone" context="{'group_by':'zone_id'}"/>
+                    <filter name="group_session" string="Session" context="{'group_by':'session_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- COLOUR-CODED SECTION PROGRESS BOARD — Phase 2 headline.
+
+         grey = draft, amber = scanning / physical_count,
+         red = variance_rescan, green = reconciled.
+         Tile background is set via CSS class state-<state>. -->
+    <record id="view_vivo_count_section_kanban" model="ir.ui.view">
+        <field name="name">vivo.count.section.kanban</field>
+        <field name="model">vivo.count.section</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="state" class="o_kanban_dashboard o_vivo_section_board" sample="1" group_create="0">
+                <field name="state"/>
+                <field name="name"/>
+                <field name="zone_id"/>
+                <field name="session_id"/>
+                <field name="scanner_id"/>
+                <field name="physical_counter_id"/>
+                <field name="scan_total_qty"/>
+                <field name="physical_total_qty"/>
+                <field name="rescan_count"/>
+                <field name="locked_by_id"/>
+                <templates>
+                    <t t-name="card">
+                        <div t-attf-class="o_vivo_section_tile state_#{record.state.raw_value}">
+                            <div class="o_vivo_section_header">
+                                <strong><field name="name"/></strong>
+                                <span class="float-end" t-if="record.rescan_count.raw_value > 0">
+                                    <i class="fa fa-refresh" title="Re-scan loops"/> <field name="rescan_count"/>
+                                </span>
+                            </div>
+                            <div class="text-muted small"><field name="zone_id"/></div>
+                            <div class="mt-2">
+                                <div t-if="record.scanner_id.raw_value">
+                                    <i class="fa fa-barcode"/> <field name="scanner_id"/>
+                                </div>
+                                <div t-if="record.physical_counter_id.raw_value">
+                                    <i class="fa fa-hand-paper-o"/> <field name="physical_counter_id"/>
+                                </div>
+                                <div t-if="record.locked_by_id.raw_value and !record.scanner_id.raw_value" class="text-warning">
+                                    <i class="fa fa-lock"/> In progress — <field name="locked_by_id"/>
+                                </div>
+                            </div>
+                            <div class="mt-2 d-flex justify-content-between">
+                                <span>Scan: <strong><field name="scan_total_qty"/></strong></span>
+                                <span>Phys: <strong><field name="physical_total_qty"/></strong></span>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- List view (unchanged from Phase 1, kept for managers wanting tabular) -->
     <record id="view_vivo_count_section_list" model="ir.ui.view">
         <field name="name">vivo.count.section.list</field>
         <field name="model">vivo.count.section</field>
         <field name="arch" type="xml">
-            <list string="Sections">
+            <list string="Sections" decoration-success="state == 'reconciled'" decoration-warning="state in ('scanning','physical_count')" decoration-danger="state == 'variance_rescan'" decoration-muted="state == 'draft'">
                 <field name="session_id"/>
                 <field name="zone_id"/>
                 <field name="name"/>
                 <field name="scanner_id"/>
                 <field name="physical_counter_id"/>
+                <field name="locked_by_id" optional="show"/>
                 <field name="scan_total_qty"/>
                 <field name="physical_total_qty"/>
                 <field name="rescan_count"/>
@@ -18,6 +102,7 @@
         </field>
     </record>
 
+    <!-- Form -->
     <record id="view_vivo_count_section_form" model="ir.ui.view">
         <field name="name">vivo.count.section.form</field>
         <field name="model">vivo.count.section</field>
@@ -71,6 +156,7 @@
     <record id="action_vivo_count_section" model="ir.actions.act_window">
         <field name="name">Sections</field>
         <field name="res_model">vivo.count.section</field>
-        <field name="view_mode">list,form</field>
+        <field name="view_mode">kanban,list,form</field>
+        <field name="search_view_id" ref="view_vivo_count_section_search"/>
     </record>
 </odoo>

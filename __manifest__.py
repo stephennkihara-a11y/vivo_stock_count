@@ -33,6 +33,7 @@ Phase 1 scope:
         "security/ir.model.access.csv",
         "data/sequences.xml",
         "data/default_config.xml",
+        "wizard/wizard_views.xml",
         "views/count_zone_views.xml",
         "views/count_section_template_views.xml",
         "views/count_session_views.xml",
@@ -43,6 +44,11 @@ Phase 1 scope:
         "views/res_config_settings_views.xml",
         "views/menu_views.xml",
     ],
+    "assets": {
+        "web.assets_backend": [
+            "vivo_stock_count/static/src/scss/section_progress_board.scss",
+        ],
+    },
     "application": True,
     "installable": True,
 }

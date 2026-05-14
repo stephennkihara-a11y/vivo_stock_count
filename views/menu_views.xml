@@ -4,6 +4,7 @@
 
     <menuitem id="menu_vivo_count_sessions" name="Count Sessions" parent="menu_vivo_count_root" action="action_vivo_count_session" sequence="10"/>
     <menuitem id="menu_vivo_count_sections" name="Sections" parent="menu_vivo_count_root" action="action_vivo_count_section" sequence="20"/>
+    <menuitem id="menu_vivo_count_variance" name="Variance Analysis" parent="menu_vivo_count_root" action="action_vivo_count_line" sequence="25"/>
     <menuitem id="menu_vivo_count_reconciliations" name="Reconciliations" parent="menu_vivo_count_root" action="action_vivo_reconciliation" sequence="30"/>
 
     <menuitem id="menu_vivo_count_config" name="Configuration" parent="menu_vivo_count_root" sequence="90" groups="vivo_stock_count.group_vivo_count_store_manager"/>

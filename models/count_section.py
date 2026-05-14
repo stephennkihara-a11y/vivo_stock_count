@@ -137,6 +137,7 @@ class VivoCountSection(models.Model):
                         "reconciled_at": fields.Datetime.now(),
                     }
                 )
+                section.session_id._maybe_auto_advance_to_counted()
             else:
                 section.write({"state": "variance_rescan", "rescan_count": section.rescan_count + 1})
         return True
