@@ -13,10 +13,14 @@ class VivoCountCommon(TransactionCase):
         cls.Zone = cls.env["vivo.count.zone"]
         cls.Template = cls.env["vivo.count.section.template"]
 
+        # Child of the default WH/Stock so the native inventory pipeline
+        # has a valid warehouse hierarchy to derive the inventory-loss
+        # offset location for Apply-time stock.move records.
         cls.location = cls.env["stock.location"].create(
             {
                 "name": "Test Store",
                 "usage": "internal",
+                "location_id": cls.env.ref("stock.stock_location_stock").id,
             }
         )
 

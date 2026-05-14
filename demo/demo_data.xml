@@ -5,10 +5,12 @@
 
     <data noupdate="1">
 
-        <!-- Stock location: the demo store. -->
+        <!-- Stock location: the demo store, hung under WH/Stock so the
+             inventory-adjustment pipeline finds a valid warehouse. -->
         <record id="demo_location_store" model="stock.location">
             <field name="name">Vivo Demo Store</field>
             <field name="usage">internal</field>
+            <field name="location_id" ref="stock.stock_location_stock"/>
         </record>
 
         <!-- Zones -->
