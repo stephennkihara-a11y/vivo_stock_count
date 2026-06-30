@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <menuitem id="menu_vivo_count_root" name="Stock Count" sequence="65"/>
+    <menuitem id="menu_vivo_count_root" name="Stock Count" sequence="65" action="action_vivo_count_session"/>
 
     <menuitem id="menu_vivo_count_sessions" name="Count Sessions" parent="menu_vivo_count_root" action="action_vivo_count_session" sequence="10"/>
     <menuitem id="menu_vivo_count_sections" name="Sections" parent="menu_vivo_count_root" action="action_vivo_count_section" sequence="20"/>

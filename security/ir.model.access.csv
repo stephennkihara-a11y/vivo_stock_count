@@ -1,40 +1,32 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
-# Zones — counter read, store manager+ write
 access_zone_counter,vivo.count.zone counter read,model_vivo_count_zone,group_vivo_count_counter,1,0,0,0
 access_zone_store_manager,vivo.count.zone store manager,model_vivo_count_zone,group_vivo_count_store_manager,1,1,1,0
 access_zone_regional,vivo.count.zone regional,model_vivo_count_zone,group_vivo_count_regional,1,1,1,1
 access_zone_cfoo,vivo.count.zone cfoo,model_vivo_count_zone,group_vivo_count_cfoo_audit,1,1,1,1
-# Section templates — store manager+ write
 access_section_template_counter,vivo.count.section.template counter read,model_vivo_count_section_template,group_vivo_count_counter,1,0,0,0
 access_section_template_store_manager,vivo.count.section.template store manager,model_vivo_count_section_template,group_vivo_count_store_manager,1,1,1,1
 access_section_template_regional,vivo.count.section.template regional,model_vivo_count_section_template,group_vivo_count_regional,1,1,1,1
 access_section_template_cfoo,vivo.count.section.template cfoo,model_vivo_count_section_template,group_vivo_count_cfoo_audit,1,1,1,1
-# Sessions — counter read scoped by rule, store manager+ write
 access_session_counter,vivo.count.session counter read,model_vivo_count_session,group_vivo_count_counter,1,1,0,0
 access_session_store_manager,vivo.count.session store manager,model_vivo_count_session,group_vivo_count_store_manager,1,1,1,1
 access_session_regional,vivo.count.session regional,model_vivo_count_session,group_vivo_count_regional,1,1,1,1
 access_session_cfoo,vivo.count.session cfoo,model_vivo_count_session,group_vivo_count_cfoo_audit,1,1,1,1
-# Sections — counter can scan, store manager+ can edit anything
 access_section_counter,vivo.count.section counter,model_vivo_count_section,group_vivo_count_counter,1,1,1,0
 access_section_store_manager,vivo.count.section store manager,model_vivo_count_section,group_vivo_count_store_manager,1,1,1,1
 access_section_regional,vivo.count.section regional,model_vivo_count_section,group_vivo_count_regional,1,1,1,1
 access_section_cfoo,vivo.count.section cfoo,model_vivo_count_section,group_vivo_count_cfoo_audit,1,1,1,1
-# Lines — counter writes scans, manager+ can edit reasons/notes
 access_line_counter,vivo.count.line counter,model_vivo_count_line,group_vivo_count_counter,1,1,1,0
 access_line_store_manager,vivo.count.line store manager,model_vivo_count_line,group_vivo_count_store_manager,1,1,1,1
 access_line_regional,vivo.count.line regional,model_vivo_count_line,group_vivo_count_regional,1,1,1,1
 access_line_cfoo,vivo.count.line cfoo,model_vivo_count_line,group_vivo_count_cfoo_audit,1,1,1,1
-# Scan events — append-only at the model level (write/unlink blocked in Python)
 access_scan_event_counter,vivo.count.scan.event counter,model_vivo_count_scan_event,group_vivo_count_counter,1,1,1,0
 access_scan_event_store_manager,vivo.count.scan.event store manager,model_vivo_count_scan_event,group_vivo_count_store_manager,1,1,1,0
 access_scan_event_regional,vivo.count.scan.event regional,model_vivo_count_scan_event,group_vivo_count_regional,1,1,1,0
 access_scan_event_cfoo,vivo.count.scan.event cfoo,model_vivo_count_scan_event,group_vivo_count_cfoo_audit,1,1,1,0
-# Reconciliation — readable for all count groups, writable for none (Python write() blocks)
 access_recon_counter,vivo.count.reconciliation counter,model_vivo_count_reconciliation,group_vivo_count_counter,1,0,0,0
 access_recon_store_manager,vivo.count.reconciliation store manager,model_vivo_count_reconciliation,group_vivo_count_store_manager,1,0,0,0
 access_recon_regional,vivo.count.reconciliation regional,model_vivo_count_reconciliation,group_vivo_count_regional,1,0,0,0
 access_recon_cfoo,vivo.count.reconciliation cfoo,model_vivo_count_reconciliation,group_vivo_count_cfoo_audit,1,0,0,0
-# Reconciliation lines — same, read-only at CSV level
 access_recon_line_counter,vivo.count.reconciliation.line counter,model_vivo_count_reconciliation_line,group_vivo_count_counter,1,0,0,0
 access_recon_line_store_manager,vivo.count.reconciliation.line store manager,model_vivo_count_reconciliation_line,group_vivo_count_store_manager,1,0,0,0
 access_recon_line_regional,vivo.count.reconciliation.line regional,model_vivo_count_reconciliation_line,group_vivo_count_regional,1,0,0,0

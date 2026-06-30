@@ -2,15 +2,13 @@
 <odoo>
     <data noupdate="1">
         <record id="cron_monthly_shrinkage_rollup" model="ir.cron">
-            <field name="name">Vivo Count — Monthly Cross-Store Shrinkage Roll-up</field>
+            <field name="name">Vivo Count Ã¢â‚¬â€ Monthly Cross-Store Shrinkage Roll-up</field>
             <field name="model_id" ref="model_vivo_count_reconciliation"/>
             <field name="state">code</field>
             <field name="code">model.cron_monthly_shrinkage_rollup()</field>
             <field name="interval_number">1</field>
             <field name="interval_type">months</field>
             <field name="active" eval="True"/>
-            <field name="numbercall">-1</field>
-            <field name="doall" eval="False"/>
         </record>
     </data>
 </odoo>

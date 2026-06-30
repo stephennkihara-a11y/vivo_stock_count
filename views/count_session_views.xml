@@ -18,8 +18,6 @@
                 <filter name="filter_review" string="Awaiting Review" domain="[('state','=','review')]"/>
                 <filter name="filter_approved" string="Approved" domain="[('state','=','approved')]"/>
                 <filter name="filter_applied" string="Applied" domain="[('state','=','applied')]"/>
-                <separator/>
-                <filter name="filter_at_risk" string="Trading-deadline At Risk" domain="[('is_behind_trading_deadline','=',True)]"/>
                 <filter name="filter_cfoo_band" string="CFOO Band" domain="[('tolerance_band','=','cfoo')]"/>
                 <filter name="filter_regional_band" string="Regional Band" domain="[('tolerance_band','=','regional')]"/>
                 <separator/>
