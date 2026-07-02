@@ -112,9 +112,17 @@
                     <button name="action_start_scanning" type="object" string="Start Scanning" class="btn-primary" invisible="state not in ('draft','variance_rescan')"/>
                     <button name="action_finish_scanning" type="object" string="Finish Scanning" class="btn-primary" invisible="state != 'scanning'"/>
                     <button name="action_submit_physical_count" type="object" string="Submit Physical Count" class="btn-primary" invisible="state != 'physical_count'"/>
-                    <field name="state" widget="statusbar"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,scanning,physical_count,reconciled"/>
                 </header>
                 <sheet>
+                    <div class="alert alert-info" role="status" invisible="state == 'reconciled'">
+                        Workflow: <strong>Draft → Scanning → Physical Count → Reconciled</strong>
+                        (or → Variance Re-scan if totals disagree). Enter the physical
+                        counter's headcount in <strong>Physical Count</strong>, then
+                        <strong>Submit Physical Count</strong>. Reconciled is reached
+                        <em>automatically</em> when the scan total equals the physical
+                        count — it is not a button you click.
+                    </div>
                     <group>
                         <group>
                             <field name="name"/>
@@ -134,9 +142,10 @@
                         </group>
                     </group>
                     <notebook>
-                        <page string="Lines">
-                            <field name="line_ids">
-                                <list editable="bottom">
+                        <page string="Counted in this rack" name="counted">
+                            <field name="counted_line_count" invisible="1"/>
+                            <field name="line_ids" domain="[('counted_qty', '&gt;', 0)]" context="{'default_section_id': id}">
+                                <list editable="bottom" decoration-danger="difference &lt; 0" decoration-success="difference &gt; 0">
                                     <field name="product_id"/>
                                     <field name="system_qty"/>
                                     <field name="counted_qty"/>
@@ -144,6 +153,25 @@
                                     <field name="variance_reason"/>
                                     <field name="variance_note"/>
                                     <field name="no_barcode_flag"/>
+                                    <field name="line_status" column_invisible="1"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Not counted here" name="not_counted">
+                            <field name="not_counted_line_count" invisible="1"/>
+                            <div class="alert alert-secondary" role="status">
+                                These SKUs are loaded from the system snapshot but were
+                                not scanned on this rack. They are treated as
+                                <strong>pending on other racks — not variances</strong> —
+                                and need no variance reason here. An SKU left uncounted on
+                                <em>every</em> rack of the session is flagged as a genuine
+                                shortage on the session.
+                            </div>
+                            <field name="not_counted_line_ids" readonly="1">
+                                <list>
+                                    <field name="product_id"/>
+                                    <field name="barcode"/>
+                                    <field name="system_qty"/>
                                 </list>
                             </field>
                         </page>

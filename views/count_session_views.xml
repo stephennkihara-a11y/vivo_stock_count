@@ -129,6 +129,9 @@
                         <button class="oe_stat_button" type="object" name="action_open_variance_dashboard" icon="fa-line-chart">
                             <field name="variance_line_count" string="Variances" widget="statinfo"/>
                         </button>
+                        <button class="oe_stat_button" type="object" name="action_open_uncounted_skus" icon="fa-search-minus" invisible="uncounted_sku_count == 0">
+                            <field name="uncounted_sku_count" string="Uncounted SKUs" widget="statinfo"/>
+                        </button>
                     </div>
                     <div class="oe_title">
                         <h1><field name="name" readonly="1"/></h1>
@@ -159,6 +162,8 @@
                             <field name="variance_line_count"/>
                             <field name="sections_with_variance"/>
                             <field name="unreasoned_line_count"/>
+                            <field name="uncounted_sku_count"/>
+                            <field name="uncounted_shortage_value" widget="monetary"/>
                         </group>
                         <group>
                             <field name="reviewer_id"/>
@@ -187,7 +192,14 @@
                             </field>
                         </page>
                         <page string="Variance Lines">
-                            <field name="line_ids" domain="[('difference', '!=', 0)]">
+                            <div class="alert alert-secondary" role="status">
+                                Only lines <strong>counted on a rack</strong> with a
+                                difference appear here — these are the ones that need a
+                                variance reason before approval. SKUs never found on any
+                                rack are potential shortages, shown under the
+                                <strong>Uncounted SKUs</strong> button above, not here.
+                            </div>
+                            <field name="line_ids" domain="[('difference', '!=', 0), ('line_status', '=', 'counted')]">
                                 <list editable="bottom">
                                     <field name="section_id"/>
                                     <field name="product_id"/>
@@ -197,6 +209,7 @@
                                     <field name="variance_value"/>
                                     <field name="variance_reason" required="difference != 0"/>
                                     <field name="variance_note"/>
+                                    <field name="line_status" column_invisible="1"/>
                                     <field name="currency_id" column_invisible="1"/>
                                 </list>
                             </field>

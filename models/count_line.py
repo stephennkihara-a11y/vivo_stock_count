@@ -13,6 +13,11 @@ VARIANCE_REASONS = [
     ("other", "Other"),
 ]
 
+LINE_STATUSES = [
+    ("counted", "Counted"),
+    ("not_counted", "Not Counted Here"),
+]
+
 
 class VivoCountLine(models.Model):
     _name = "vivo.count.line"
@@ -49,6 +54,19 @@ class VivoCountLine(models.Model):
     difference = fields.Float(
         compute="_compute_difference", store=True, digits="Product Unit of Measure"
     )
+    line_status = fields.Selection(
+        LINE_STATUSES,
+        compute="_compute_line_status",
+        store=True,
+        index=True,
+        help=(
+            "Counted = this SKU was scanned on this rack (counted qty > 0).\n"
+            "Not Counted Here = a system SKU that was not found on this rack. "
+            "It is pending on another rack, not a shrinkage variance, so it "
+            "needs no variance reason. An SKU left uncounted on every rack of "
+            "the session is flagged as a genuine shortage at session level."
+        ),
+    )
 
     unit_cost = fields.Float(string="Unit Cost", digits="Product Price")
     currency_id = fields.Many2one(
@@ -79,6 +97,13 @@ class VivoCountLine(models.Model):
     def _compute_difference(self):
         for line in self:
             line.difference = (line.counted_qty or 0.0) - (line.system_qty or 0.0)
+
+    @api.depends("counted_qty")
+    def _compute_line_status(self):
+        for line in self:
+            line.line_status = (
+                "counted" if (line.counted_qty or 0.0) > 0 else "not_counted"
+            )
 
     @api.depends("difference", "unit_cost")
     def _compute_variance_value(self):

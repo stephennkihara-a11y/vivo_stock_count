@@ -72,9 +72,51 @@ vivo.count.zone ─┬─< vivo.count.section.template       (store map, reused 
 **Section:** `draft → scanning → physical_count → reconciled`, with a
 `variance_rescan → scanning` loop on every scan-vs-physical mismatch.
 
+`reconciled` is reached **automatically** — never by a button — the moment the
+scan total equals the physical count. It is not a manually clickable stage.
+The full path is driven entirely from the desktop section form:
+
+- **Start Scanning** (`draft`/`variance_rescan` → `scanning`)
+- **Finish Scanning** (`scanning` → `physical_count`)
+- type the physical counter's headcount into **Physical Count**, then
+  **Submit Physical Count** (`physical_count` → `reconciled` if totals match,
+  else → `variance_rescan`)
+
+The same transitions are exposed to the mobile PWA, but neither the PWA nor a
+missing button is required to complete a count on desktop.
+
 A session cannot reach `counted` (and therefore `review` / `approved` / `applied`)
 while any section is unreconciled — enforced both by state guards on the action
 methods and by a `@api.constrains` invariant that prevents direct writes.
+
+## Counted vs. "not counted here" (Option 2)
+
+Each section loads **every** SKU in scope for the store location, but a scanner
+only scans the items physically present on their assigned rack. To stop the
+other racks' SKUs from reading as shrinkage, every line carries a computed
+`line_status`:
+
+- **Counted** — `counted_qty > 0`. The item was scanned on this rack. These are
+  the lines the counter reconciles and, where they differ from the system, must
+  give a variance reason for.
+- **Not counted here** — `counted_qty == 0`. A system SKU that wasn't found on
+  this rack. It is treated as *pending on another rack*, **not** a variance: it
+  needs no reason, does not appear in the Variance Lines tab, and never blocks
+  reconcile or approval.
+
+The section form splits these into two tabs (*Counted in this rack* /
+*Not counted here*), and the scan total (hence the reconcile check) counts only
+the counted subset — which is automatic, since uncounted lines contribute zero.
+
+The discrepancy the count exists to catch is preserved at the **session** level:
+an SKU counted on *no* rack of the entire session (positive system snapshot,
+zero counted everywhere) is rolled up into `uncounted_sku_count` /
+`uncounted_shortage_value` and listed behind the **Uncounted SKUs** button on
+the session form. So a per-rack screen stays clean (≈62 counted lines, not
+1 000+), while a genuine store-wide shortage is still flagged before Apply.
+
+Line search views ship filters for **Counted**, **Not Counted Here**,
+**Has Variance Reason**, and **Missing Variance Reason**.
 
 ## Segregation of duties
 

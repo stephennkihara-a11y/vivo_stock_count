@@ -114,6 +114,24 @@ class VivoCountSession(models.Model):
     unreasoned_line_count = fields.Integer(
         compute="_compute_variance_summary", store=True,
     )
+    # Genuine shortage rollup — SKUs in scope that were counted on NO rack of
+    # the session (Option 2). Per-rack these read as harmless "not counted
+    # here", but an SKU counted nowhere is a real potential shortage and is
+    # flagged here at the end so the discrepancy the count exists to catch is
+    # never lost.
+    uncounted_sku_count = fields.Integer(
+        string="Uncounted SKUs",
+        compute="_compute_uncounted_rollup",
+        store=True,
+        help="SKUs in scope not counted on any rack of this session — potential shortage.",
+    )
+    uncounted_shortage_value = fields.Monetary(
+        string="Uncounted Value",
+        compute="_compute_uncounted_rollup",
+        store=True,
+        currency_field="currency_id",
+        help="Snapshot value of SKUs not counted on any rack of this session.",
+    )
     tolerance_band = fields.Selection(
         [(BAND_AUTO, "Store Manager"), (BAND_REGIONAL, "Regional Manager"), (BAND_CFOO, "CFOO")],
         compute="_compute_tolerance_band",
@@ -197,7 +215,10 @@ class VivoCountSession(models.Model):
                 by_product[pid] = by_product.get(pid, 0.0) + (
                     (line.counted_qty or 0.0) - (line.system_qty or 0.0)
                 )
-                if line.counted_qty != line.system_qty:
+                # Only lines that were actually counted on the rack can carry a
+                # rack-level variance. "Not counted here" lines (counted_qty 0)
+                # are pending on other racks — never a variance to reason for.
+                if line.line_status == "counted" and line.counted_qty != line.system_qty:
                     if not line.variance_reason:
                         unreasoned_lines += 1
                     variance_sections.add(line.section_id.id)
@@ -206,6 +227,55 @@ class VivoCountSession(models.Model):
             )
             session.sections_with_variance = len(variance_sections)
             session.unreasoned_line_count = unreasoned_lines
+
+    @api.depends(
+        "line_ids.counted_qty",
+        "line_ids.system_qty",
+        "line_ids.unit_cost",
+        "line_ids.line_status",
+    )
+    def _compute_uncounted_rollup(self):
+        """Flag SKUs counted on NO rack of the session (genuine shortage).
+
+        Aggregates per product across the whole session: a product with a
+        positive system snapshot but zero counted quantity everywhere was
+        never found — a real potential shortage that the per-rack "not
+        counted here" classification would otherwise hide.
+        """
+        for session in self:
+            by_product = {}
+            for line in session.line_ids:
+                pid = line.product_id.id
+                d = by_product.setdefault(
+                    pid, {"counted": 0.0, "system": 0.0, "unit_cost": line.unit_cost or 0.0}
+                )
+                d["counted"] += line.counted_qty or 0.0
+                d["system"] += line.system_qty or 0.0
+                if line.unit_cost:
+                    d["unit_cost"] = line.unit_cost
+            count = 0
+            value = 0.0
+            for d in by_product.values():
+                if d["counted"] == 0.0 and d["system"] > 0.0:
+                    count += 1
+                    value += d["system"] * d["unit_cost"]
+            session.uncounted_sku_count = count
+            session.uncounted_shortage_value = value
+
+    def _uncounted_line_ids(self):
+        """Line ids for SKUs counted on no rack of the session (system > 0)."""
+        self.ensure_one()
+        counted_pids = {
+            line.product_id.id
+            for line in self.line_ids
+            if (line.counted_qty or 0.0) > 0
+        }
+        return [
+            line.id
+            for line in self.line_ids
+            if line.product_id.id not in counted_pids
+            and (line.system_qty or 0.0) > 0
+        ]
 
     @api.depends(
         "start_date",
@@ -422,8 +492,14 @@ class VivoCountSession(models.Model):
     def _check_variance_reasons(self):
         """AC #11: every line with non-zero difference needs a reason."""
         self.ensure_one()
+        # Only counted lines (scanned on the rack) need a variance reason.
+        # "Not counted here" lines are pending on other racks, not shrinkage,
+        # so they must not block approval — a genuine shortage (an SKU counted
+        # nowhere in the session) is surfaced separately via the uncounted-SKU
+        # rollup, not as a per-line reason.
         missing = self.line_ids.filtered(
             lambda l: l.section_id.state == "reconciled"
+            and l.line_status == "counted"
             and l.difference != 0.0
             and not l.variance_reason
         )
@@ -706,6 +782,7 @@ class VivoCountSession(models.Model):
             "domain": [
                 ("session_id", "=", self.id),
                 ("difference", "!=", 0),
+                ("line_status", "=", "counted"),
                 ("section_id.state", "=", "reconciled"),
             ],
             "views": [
@@ -713,6 +790,21 @@ class VivoCountSession(models.Model):
                 (self.env.ref("vivo_stock_count.view_vivo_count_line_graph").id, "graph"),
                 (self.env.ref("vivo_stock_count.view_vivo_count_line_list").id, "list"),
             ],
+        }
+
+    def action_open_uncounted_skus(self):
+        """List SKUs counted on no rack of this session — the shortage rollup."""
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Uncounted SKUs — %s") % self.name,
+            "res_model": "vivo.count.line",
+            "view_mode": "list,form",
+            "domain": [("id", "in", self._uncounted_line_ids())],
+            "views": [
+                (self.env.ref("vivo_stock_count.view_vivo_count_line_list").id, "list"),
+            ],
+            "context": {"search_default_group_zone": 1},
         }
 
     def action_open_approval_wizard(self):

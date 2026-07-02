@@ -14,6 +14,7 @@
                 <field name="counted_qty"/>
                 <field name="difference"/>
                 <field name="variance_value"/>
+                <field name="line_status" widget="badge" decoration-success="line_status == 'counted'" decoration-muted="line_status == 'not_counted'"/>
                 <field name="variance_reason"/>
                 <field name="currency_id" column_invisible="1"/>
             </list>
@@ -56,12 +57,19 @@
                 <field name="session_id"/>
                 <field name="section_id"/>
                 <field name="zone_id"/>
+                <field name="line_status"/>
                 <field name="variance_reason"/>
-                <filter name="filter_with_variance" string="With Variance" domain="[('difference','!=',0)]"/>
-                <filter name="filter_shortage" string="Shortage" domain="[('difference','&lt;',0)]"/>
+                <filter name="filter_counted" string="Counted" domain="[('line_status','=','counted')]"/>
+                <filter name="filter_not_counted" string="Not Counted Here" domain="[('line_status','=','not_counted')]"/>
+                <separator/>
+                <filter name="filter_with_variance" string="With Variance" domain="[('difference','!=',0),('line_status','=','counted')]"/>
+                <filter name="filter_shortage" string="Shortage" domain="[('difference','&lt;',0),('line_status','=','counted')]"/>
                 <filter name="filter_overage" string="Overage" domain="[('difference','&gt;',0)]"/>
-                <filter name="filter_unreasoned" string="No Reason" domain="[('difference','!=',0),('variance_reason','=',False)]"/>
+                <filter name="filter_has_reason" string="Has Variance Reason" domain="[('variance_reason','!=',False)]"/>
+                <filter name="filter_missing_reason" string="Missing Variance Reason" domain="[('line_status','=','counted'),('difference','!=',0),('variance_reason','=',False)]"/>
+                <filter name="filter_unreasoned" string="No Reason" domain="[('line_status','=','counted'),('difference','!=',0),('variance_reason','=',False)]"/>
                 <group string="Group By">
+                    <filter name="group_status" string="Counted / Not Counted" context="{'group_by':'line_status'}"/>
                     <filter name="group_zone" string="Zone" context="{'group_by':'zone_id'}"/>
                     <filter name="group_section" string="Section" context="{'group_by':'section_id'}"/>
                     <filter name="group_reason" string="Reason" context="{'group_by':'variance_reason'}"/>
