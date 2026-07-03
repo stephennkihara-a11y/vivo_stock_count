@@ -77,10 +77,11 @@
 
         <!-- Section rule mirrors session rule via inheritance from session_id -->
         <record id="rule_section_counter" model="ir.rule">
-            <field name="name">Count Section — counter sees only own sections</field>
+            <field name="name">Count Section — counter claims open racks during active count</field>
             <field name="model_id" ref="model_vivo_count_section"/>
             <field name="domain_force">[
-                '|','|',
+                '|','|','|',
+                ('session_id.state','=','in_progress'),
                 ('scanner_id','=',user.id),
                 ('physical_counter_id','=',user.id),
                 ('locked_by_id','=',user.id),
