@@ -18,7 +18,7 @@ def migrate(cr, version):
 
     sections = env["vivo.count.section"].search([])
     if sections:
-        sections._compute_line_split()
+        sections._compute_line_counts()
         sections.flush_recordset(["counted_line_count", "not_counted_line_count"])
 
     sessions = env["vivo.count.session"].search([])

@@ -41,7 +41,9 @@ class TestGlPosting(VivoCountCommon):
         )
         # Reconcile the second section trivially.
         self._reconcile_section(sections[1], self.scanner, self.physical, 0, 0)
-        session.action_submit_for_review()
+        # The store manager reviews (becomes reviewer_id) and approves, so the
+        # reconciliation header captures them as reviewer AND approver.
+        session.with_user(self.store_manager).action_submit_for_review()
         session.with_user(self.store_manager).action_approve()
         return session
 

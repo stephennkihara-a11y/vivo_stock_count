@@ -38,14 +38,17 @@ class VivoCountSection(models.Model):
     # but only the ones physically scanned on this rack (counted_qty > 0) are
     # "counted". The rest are "not counted here" — pending on other racks, not
     # variances — and are kept out of the reconcile/variance path.
+    # Kept in separate compute methods on purpose: a non-stored One2many and
+    # stored Integers cannot share one compute method (Odoo requires a
+    # consistent `store`/`compute_sudo` across fields computed together).
     not_counted_line_ids = fields.One2many(
         "vivo.count.line",
         "section_id",
-        compute="_compute_line_split",
+        compute="_compute_not_counted_lines",
         string="Not Counted Here",
     )
-    counted_line_count = fields.Integer(compute="_compute_line_split", store=True)
-    not_counted_line_count = fields.Integer(compute="_compute_line_split", store=True)
+    counted_line_count = fields.Integer(compute="_compute_line_counts", store=True)
+    not_counted_line_count = fields.Integer(compute="_compute_line_counts", store=True)
 
     scan_total_qty = fields.Float(
         compute="_compute_totals", store=True, digits="Product Unit of Measure",
@@ -92,14 +95,20 @@ class VivoCountSection(models.Model):
             section.scan_total_qty = sum(section.line_ids.mapped("counted_qty"))
 
     @api.depends("line_ids.line_status")
-    def _compute_line_split(self):
+    def _compute_not_counted_lines(self):
         for section in self:
-            not_counted = section.line_ids.filtered(
+            section.not_counted_line_ids = section.line_ids.filtered(
                 lambda l: l.line_status == "not_counted"
             )
-            section.not_counted_line_ids = not_counted
-            section.not_counted_line_count = len(not_counted)
-            section.counted_line_count = len(section.line_ids) - len(not_counted)
+
+    @api.depends("line_ids.line_status")
+    def _compute_line_counts(self):
+        for section in self:
+            not_counted = len(
+                section.line_ids.filtered(lambda l: l.line_status == "not_counted")
+            )
+            section.not_counted_line_count = not_counted
+            section.counted_line_count = len(section.line_ids) - not_counted
 
     @api.depends("scan_total_qty", "physical_total_qty", "state")
     def _compute_is_reconciled(self):

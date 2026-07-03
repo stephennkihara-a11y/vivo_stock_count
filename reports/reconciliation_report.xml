@@ -46,15 +46,15 @@
                             </tr>
                             <tr>
                                 <td><strong>Reviewer</strong></td>
-                                <td t-field="doc.reviewer_id"/>
+                                <td><span t-field="doc.reviewer_id"/></td>
                             </tr>
                             <tr>
                                 <td><strong>Approver</strong></td>
-                                <td t-field="doc.approver_id"/>
+                                <td><span t-field="doc.approver_id"/></td>
                             </tr>
                             <tr>
                                 <td><strong>Applied by</strong></td>
-                                <td t-field="doc.applied_by_id"/>
+                                <td><span t-field="doc.applied_by_id"/></td>
                             </tr>
                         </table>
 
@@ -62,7 +62,7 @@
                         <table class="table table-sm">
                             <tr>
                                 <td>Total absolute variance qty</td>
-                                <td style="text-align:right" t-field="doc.total_variance_qty"/>
+                                <td style="text-align:right"><span t-field="doc.total_variance_qty"/></td>
                             </tr>
                             <tr>
                                 <td>Total absolute variance value</td>
@@ -107,11 +107,11 @@
                                     <tr t-attf-style="#{'background-color:#fdecea;' if line.variance_type == 'shortage' else ('background-color:#e8f5e9;' if line.variance_type == 'overage' else '')}">
                                         <td><t t-esc="line.zone_id.name or 'Multiple'"/></td>
                                         <td><t t-esc="line.section_id.name or 'Multiple'"/></td>
-                                        <td t-field="line.barcode"/>
-                                        <td t-field="line.product_id"/>
-                                        <td style="text-align:right" t-field="line.qty_before"/>
-                                        <td style="text-align:right" t-field="line.qty_after"/>
-                                        <td style="text-align:right" t-field="line.qty_variance"/>
+                                        <td><span t-field="line.barcode"/></td>
+                                        <td><span t-field="line.product_id"/></td>
+                                        <td style="text-align:right"><span t-field="line.qty_before"/></td>
+                                        <td style="text-align:right"><span t-field="line.qty_after"/></td>
+                                        <td style="text-align:right"><span t-field="line.qty_variance"/></td>
                                         <td style="text-align:right">
                                             <span t-field="line.value_before" t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
                                         </td>
@@ -121,8 +121,8 @@
                                         <td style="text-align:right">
                                             <span t-field="line.value_variance" t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
                                         </td>
-                                        <td t-field="line.variance_reason"/>
-                                        <td style="text-align:right" t-field="line.section_rescan_count"/>
+                                        <td><span t-field="line.variance_reason"/></td>
+                                        <td style="text-align:right"><span t-field="line.section_rescan_count"/></td>
                                     </tr>
                                 </t>
                             </tbody>

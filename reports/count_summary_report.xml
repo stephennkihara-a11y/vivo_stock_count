@@ -18,18 +18,18 @@
                         <h2>Count Summary</h2>
                         <h3 t-field="doc.name"/>
                         <table class="table table-sm">
-                            <tr><td><strong>Store</strong></td><td t-field="doc.location_id"/></tr>
+                            <tr><td><strong>Store</strong></td><td><span t-field="doc.location_id"/></td></tr>
                             <tr><td><strong>Zone</strong></td><td><t t-esc="doc.zone_id.name or 'Whole store'"/></td></tr>
-                            <tr><td><strong>Scheduled</strong></td><td t-field="doc.scheduled_date"/></tr>
-                            <tr><td><strong>Started</strong></td><td t-field="doc.start_date"/></tr>
-                            <tr><td><strong>Applied</strong></td><td t-field="doc.end_date"/></tr>
-                            <tr><td><strong>State</strong></td><td t-field="doc.state"/></tr>
+                            <tr><td><strong>Scheduled</strong></td><td><span t-field="doc.scheduled_date"/></td></tr>
+                            <tr><td><strong>Started</strong></td><td><span t-field="doc.start_date"/></td></tr>
+                            <tr><td><strong>Applied</strong></td><td><span t-field="doc.end_date"/></td></tr>
+                            <tr><td><strong>State</strong></td><td><span t-field="doc.state"/></td></tr>
                             <tr><td><strong>Sections</strong></td><td><span t-field="doc.sections_reconciled"/> / <span t-field="doc.sections_total"/></td></tr>
                             <tr><td><strong>Variance value</strong></td>
                                 <td><span t-field="doc.variance_value" t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/> (<span t-field="doc.tolerance_band"/>)</td></tr>
-                            <tr><td><strong>Reviewer</strong></td><td t-field="doc.reviewer_id"/></tr>
-                            <tr><td><strong>Approver</strong></td><td t-field="doc.approver_id"/></tr>
-                            <tr><td><strong>Applied by</strong></td><td t-field="doc.applied_by_id"/></tr>
+                            <tr><td><strong>Reviewer</strong></td><td><span t-field="doc.reviewer_id"/></td></tr>
+                            <tr><td><strong>Approver</strong></td><td><span t-field="doc.approver_id"/></td></tr>
+                            <tr><td><strong>Applied by</strong></td><td><span t-field="doc.applied_by_id"/></td></tr>
                         </table>
 
                         <h4>Variance Lines</h4>
@@ -48,15 +48,15 @@
                             <tbody>
                                 <t t-foreach="doc.line_ids.filtered(lambda l: l.difference != 0)" t-as="line">
                                     <tr>
-                                        <td t-field="line.section_id"/>
-                                        <td t-field="line.product_id"/>
-                                        <td style="text-align:right" t-field="line.system_qty"/>
-                                        <td style="text-align:right" t-field="line.counted_qty"/>
-                                        <td style="text-align:right" t-field="line.difference"/>
+                                        <td><span t-field="line.section_id"/></td>
+                                        <td><span t-field="line.product_id"/></td>
+                                        <td style="text-align:right"><span t-field="line.system_qty"/></td>
+                                        <td style="text-align:right"><span t-field="line.counted_qty"/></td>
+                                        <td style="text-align:right"><span t-field="line.difference"/></td>
                                         <td style="text-align:right">
                                             <span t-field="line.variance_value" t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
                                         </td>
-                                        <td t-field="line.variance_reason"/>
+                                        <td><span t-field="line.variance_reason"/></td>
                                     </tr>
                                 </t>
                             </tbody>
