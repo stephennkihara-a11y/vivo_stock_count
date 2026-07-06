@@ -139,6 +139,12 @@ class TestSectionReconciliation(VivoCountCommon):
         self.assertEqual(section.state, "reconciled")
 
     def test_rescan_count_tracks_loops(self):
+        # This test exercises multiple re-scan loops before resolving. Raise
+        # the escalation threshold so the loops are not diverted to auditor
+        # review (see test_section_review for the escalation behaviour itself).
+        self.env["ir.config_parameter"].sudo().set_param(
+            "vivo_count.rescan_review_threshold", "5"
+        )
         session = self._new_session()
         sections = self._start_and_get_sections(session)
         section = sections[0]

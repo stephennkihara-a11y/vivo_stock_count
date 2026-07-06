@@ -1,5 +1,5 @@
-from odoo import _, api, fields, models
-from odoo.exceptions import UserError, ValidationError
+from odoo import _, SUPERUSER_ID, api, fields, models
+from odoo.exceptions import AccessError, UserError, ValidationError
 
 
 SECTION_STATES = [
@@ -76,6 +76,23 @@ class VivoCountSection(models.Model):
              "Empty when the section auto-reconciled (no genuine variance).",
     )
 
+    # Auditor force-reconcile of a persistent scan-vs-physical disagreement.
+    # When the counters cannot agree even after re-scanning, an auditor sets an
+    # authoritative physical count and records why; the section reconciles even
+    # though scan_total_qty != physical_total_qty.
+    force_reconciled = fields.Boolean(
+        readonly=True,
+        copy=False,
+        help="Set when an auditor reconciled this section despite the scan and "
+             "physical counts still disagreeing.",
+    )
+    force_reconcile_reason = fields.Text(
+        string="Auditor Reconciliation Reason",
+        readonly=True,
+        copy=False,
+        help="Why the auditor force-reconciled a persistent scan-vs-physical mismatch.",
+    )
+
     # Soft-lock: the scanner currently working this section. Released after
     # `vivo_count.section_lock_minutes` of inactivity.
     locked_by_id = fields.Many2one("res.users", string="In Progress — User", copy=False)
@@ -119,12 +136,12 @@ class VivoCountSection(models.Model):
             section.not_counted_line_count = not_counted
             section.counted_line_count = len(section.line_ids) - not_counted
 
-    @api.depends("scan_total_qty", "physical_total_qty", "state")
+    @api.depends("scan_total_qty", "physical_total_qty", "state", "force_reconciled")
     def _compute_is_reconciled(self):
         for section in self:
-            section.is_reconciled = (
-                section.state == "reconciled"
-                and section.scan_total_qty == section.physical_total_qty
+            section.is_reconciled = section.state == "reconciled" and (
+                section.scan_total_qty == section.physical_total_qty
+                or section.force_reconciled
             )
 
     @api.depends("line_ids.no_barcode_flag", "line_ids.no_barcode_resolved")
@@ -201,8 +218,24 @@ class VivoCountSection(models.Model):
                     # Genuine variance -> hold for auditor review.
                     section.write({"state": "pending_review"})
             else:
-                section.write({"state": "variance_rescan", "rescan_count": section.rescan_count + 1})
+                # Scan and physical disagree. Allow a bounded re-scan loop, but
+                # a persistent disagreement must not loop forever nor auto-
+                # reconcile — after the threshold it escalates to the auditor.
+                new_rescan = section.rescan_count + 1
+                if new_rescan > section._rescan_review_threshold():
+                    section.write({"state": "pending_review", "rescan_count": new_rescan})
+                else:
+                    section.write({"state": "variance_rescan", "rescan_count": new_rescan})
         return True
+
+    def _rescan_review_threshold(self):
+        val = self.env["ir.config_parameter"].sudo().get_param(
+            "vivo_count.rescan_review_threshold", "1"
+        )
+        try:
+            return int(val)
+        except (TypeError, ValueError):
+            return 1
 
     # ------------------------------------------------------------------
     # Auditor-confirmed reconciliation
@@ -290,13 +323,66 @@ class VivoCountSection(models.Model):
                 }
             )
 
-    def action_confirm_reconcile(self):
+    def _ensure_auditor(self):
+        """Only a Store Manager or higher may confirm a reconciliation.
+
+        The superuser bypasses the gate (setup / automated flows). A plain
+        counter can never confirm — and, in particular, can never force-
+        reconcile a persistent mismatch.
+        """
+        self.ensure_one()
+        if self.env.uid == SUPERUSER_ID:
+            return
+        if not self.env.user.has_group(
+            "vivo_stock_count.group_vivo_count_store_manager"
+        ):
+            raise AccessError(
+                _(
+                    "Only a Store Manager (or higher) can confirm a section "
+                    "reconciliation."
+                )
+            )
+
+    def action_confirm_reconcile(self, physical_qty=None, force_reason=None):
         """pending_review -> reconciled, stamping reconciled_by_id with the
-        auditor. Validates variance reasons first."""
+        auditor. Validates variance reasons first.
+
+        Two paths converge here:
+        - scan == physical (variance sign-off): the auditor accepts the
+          reconciled counts; per-line variance reasons are required.
+        - scan != physical (persistent mismatch escalated after re-scans): the
+          auditor sets an authoritative ``physical_qty`` (their number wins)
+          and must record a ``force_reason`` for the audit trail. The section
+          reconciles even though the totals differ (``force_reconciled``).
+        """
         for section in self:
             if section.state != "pending_review":
                 raise UserError(
                     _("Section %s is not pending review.") % section.name
+                )
+            section._ensure_auditor()
+            if physical_qty is not None:
+                section.physical_total_qty = physical_qty
+            if section.scan_total_qty != section.physical_total_qty:
+                # Auditor is forcing a reconciliation over a real disagreement.
+                if not force_reason:
+                    raise ValidationError(
+                        _(
+                            "Section %(name)s: the scan total (%(scan)s) and the "
+                            "physical count (%(phys)s) still disagree. Record a "
+                            "reason to reconcile on your authoritative figure."
+                        )
+                        % {
+                            "name": section.name,
+                            "scan": section.scan_total_qty,
+                            "phys": section.physical_total_qty,
+                        }
+                    )
+                section.write(
+                    {
+                        "force_reconciled": True,
+                        "force_reconcile_reason": force_reason,
+                    }
                 )
             section._check_counted_variance_reasons()
             section._do_reconcile(reconciled_by=self.env.user)
@@ -331,6 +417,9 @@ class VivoCountSection(models.Model):
                     "physical_total_qty": 0.0,
                     "rescan_count": section.rescan_count + 1,
                     "reconciled_at": False,
+                    "reconciled_by_id": False,
+                    "force_reconciled": False,
+                    "force_reconcile_reason": False,
                     "locked_by_id": False,
                     "locked_at": False,
                 }
@@ -473,9 +562,14 @@ class VivoCountSection(models.Model):
 
     @api.constrains("state", "scan_total_qty", "physical_total_qty")
     def _check_reconcile_match(self):
-        """AC #2: cannot land in `reconciled` unless scan == physical."""
+        """AC #2: cannot land in `reconciled` unless scan == physical — unless
+        an auditor has explicitly force-reconciled a persistent mismatch."""
         for section in self:
-            if section.state == "reconciled" and section.scan_total_qty != section.physical_total_qty:
+            if (
+                section.state == "reconciled"
+                and section.scan_total_qty != section.physical_total_qty
+                and not section.force_reconciled
+            ):
                 raise ValidationError(
                     _(
                         "Section %s cannot be reconciled — scan total %s does not "

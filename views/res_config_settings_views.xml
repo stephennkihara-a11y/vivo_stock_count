@@ -25,6 +25,9 @@
                         <setting string="Auto-close zero-variance sections" help="Skip auditor review when a matched section has no genuine variance; only variances need sign-off.">
                             <field name="vivo_count_auto_close_zero_variance"/>
                         </setting>
+                        <setting string="Re-scans before auditor escalation" help="Failed re-scans allowed on a scan-vs-physical mismatch before the section escalates to auditor review.">
+                            <field name="vivo_count_rescan_review_threshold"/>
+                        </setting>
                         <setting string="Store trading deadline">
                             <field name="vivo_count_trading_deadline"/>
                         </setting>

@@ -29,5 +29,9 @@
             <field name="key">vivo_count.auto_close_zero_variance</field>
             <field name="value">True</field>
         </record>
+        <record id="cp_rescan_review_threshold" model="ir.config_parameter">
+            <field name="key">vivo_count.rescan_review_threshold</field>
+            <field name="value">1</field>
+        </record>
     </data>
 </odoo>

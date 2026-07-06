@@ -35,6 +35,15 @@ class ResConfigSettings(models.TransientModel):
              "skipping auditor review — so only genuine variances require "
              "sign-off. When off, every matched section goes to Pending Review.",
     )
+    vivo_count_rescan_review_threshold = fields.Integer(
+        string="Re-scans before auditor escalation",
+        config_parameter="vivo_count.rescan_review_threshold",
+        default=1,
+        help="Number of failed re-scans allowed on a scan-vs-physical mismatch "
+             "before the section escalates to auditor review instead of looping "
+             "in Variance Re-scan. Default 1: one re-scan attempt, then the "
+             "auditor decides.",
+    )
     vivo_count_trading_deadline = fields.Char(
         string="Store trading deadline",
         config_parameter="vivo_count.trading_deadline",

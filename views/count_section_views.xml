@@ -141,6 +141,8 @@
                             <field name="rescan_count"/>
                             <field name="reconciled_at"/>
                             <field name="reconciled_by_id"/>
+                            <field name="force_reconciled" invisible="not force_reconciled"/>
+                            <field name="force_reconcile_reason" invisible="not force_reconciled"/>
                             <field name="locked_by_id"/>
                             <field name="locked_at"/>
                         </group>

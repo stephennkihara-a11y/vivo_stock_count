@@ -6,7 +6,7 @@ signs off via the Review & Reconcile wizard. Sections with no genuine
 variance auto-reconcile when the `vivo_count.auto_close_zero_variance` toggle
 is on (the default).
 """
-from odoo.exceptions import ValidationError
+from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tests.common import tagged
 
 from .common import VivoCountCommon
@@ -133,3 +133,105 @@ class TestSectionReview(VivoCountCommon):
         so a matched section still auto-reconciles with the toggle on."""
         section = self._submit_section(sys=0, cnt=6, physical=6)
         self.assertEqual(section.state, "reconciled")
+
+    # ------------------------------------------------------------------
+    # Persistent scan-vs-physical mismatch -> auditor escalation
+    # ------------------------------------------------------------------
+    def _escalate_via_mismatch(self, scan=5, physical=3):
+        """Drive a section to pending_review through a persistent mismatch.
+
+        With the default threshold (1) the first mismatch loops to
+        variance_rescan; the second escalates to pending_review. The seeded
+        line has system_qty == counted_qty, so there is no per-line variance —
+        only the section-total disagreement drives the escalation.
+        """
+        session = self._new_session()
+        section = self._start_and_get_sections(session)[0]
+        section.scanner_id = self.scanner.id
+        section.with_user(self.scanner).action_start_scanning()
+        self.Line.create(
+            {
+                "section_id": section.id,
+                "product_id": self.product_a.id,
+                "system_qty": scan,
+                "counted_qty": scan,
+                "unit_cost": self.product_a.standard_price,
+            }
+        )
+        section.with_user(self.scanner).action_finish_scanning()
+        section.physical_counter_id = self.physical.id
+        section.with_user(self.physical).action_submit_physical_count(
+            physical_qty=physical
+        )
+        # First mismatch -> loop.
+        self.assertEqual(section.state, "variance_rescan")
+        # Re-scan, still disagree -> escalate.
+        section.with_user(self.scanner).action_start_scanning()
+        section.with_user(self.scanner).action_finish_scanning()
+        section.with_user(self.physical).action_submit_physical_count(
+            physical_qty=physical
+        )
+        return section
+
+    def test_mismatch_under_threshold_loops(self):
+        """First mismatch (rescan_count == threshold) stays in variance_rescan."""
+        section = self._submit_section(sys=5, cnt=5, physical=3)
+        self.assertEqual(section.state, "variance_rescan")
+        self.assertEqual(section.rescan_count, 1)
+
+    def test_mismatch_over_threshold_escalates_to_pending_review(self):
+        """A persistent mismatch escalates to the auditor, never auto-reconciles."""
+        section = self._escalate_via_mismatch(scan=5, physical=3)
+        self.assertEqual(section.state, "pending_review")
+        self.assertEqual(section.rescan_count, 2)
+        self.assertFalse(section.reconciled_at)
+
+    def test_auditor_forced_reconcile_sets_qty_reason_and_stamps(self):
+        section = self._escalate_via_mismatch(scan=5, physical=3)
+        # Auditor's authoritative headcount (4) differs from the scan (5).
+        section.with_user(self.store_manager).action_confirm_reconcile(
+            physical_qty=4.0, force_reason="Recount by auditor; two units mis-scanned."
+        )
+        self.assertEqual(section.state, "reconciled")
+        self.assertTrue(section.force_reconciled)
+        self.assertEqual(section.physical_total_qty, 4.0)
+        self.assertEqual(section.reconciled_by_id, self.store_manager)
+        self.assertTrue(section.force_reconcile_reason)
+        self.assertTrue(section.reconciled_at)
+
+    def test_auditor_force_reconcile_without_reason_blocked(self):
+        section = self._escalate_via_mismatch(scan=5, physical=3)
+        with self.assertRaises(ValidationError):
+            section.with_user(self.store_manager).action_confirm_reconcile(
+                physical_qty=4.0
+            )
+        self.assertEqual(section.state, "pending_review")
+
+    def test_plain_counter_cannot_force_reconcile(self):
+        section = self._escalate_via_mismatch(scan=5, physical=3)
+        with self.assertRaises(AccessError):
+            section.with_user(self.scanner).action_confirm_reconcile(
+                physical_qty=4.0, force_reason="not allowed"
+            )
+        self.assertEqual(section.state, "pending_review")
+
+    def test_plain_counter_cannot_confirm_variance_signoff(self):
+        # Even the scan==physical sign-off path is manager-gated.
+        section = self._submit_section(sys=10, cnt=8, physical=8, reason="miscount")
+        self.assertEqual(section.state, "pending_review")
+        with self.assertRaises(AccessError):
+            section.with_user(self.scanner).action_confirm_reconcile()
+
+    def test_forced_reconcile_via_wizard(self):
+        section = self._escalate_via_mismatch(scan=5, physical=3)
+        wiz = (
+            self.env["vivo.count.section.review.wizard"]
+            .with_user(self.store_manager)
+            .create({"section_id": section.id})
+        )
+        self.assertTrue(wiz.is_mismatch)
+        wiz.authoritative_qty = 5.0
+        wiz.force_reason = "Auditor accepts the scanned count."
+        wiz.with_user(self.store_manager).action_confirm()
+        self.assertEqual(section.state, "reconciled")
+        self.assertEqual(section.reconciled_by_id, self.store_manager)

@@ -83,7 +83,20 @@ The full path is driven from the desktop section form:
   wizard listing the counted lines. The auditor must give a variance reason
   (and a note for reason *Other*) for every counted line that differs from the
   system before confirming. Confirmation stamps `reconciled_by_id` and
-  `reconciled_at` for the audit trail.
+  `reconciled_at` for the audit trail. Confirmation is **manager-gated**
+  (`group_vivo_count_store_manager` or higher) — a plain counter can never
+  reconcile a section.
+
+**Persistent mismatch → auditor.** A scan-vs-physical mismatch loops through
+`variance_rescan` for re-scanning, but it must not loop forever. After
+`vivo_count.rescan_review_threshold` failed re-scans (default 1) the section
+escalates to `pending_review` for the auditor instead of looping. In the
+wizard the auditor sets an **authoritative physical count** (the counters
+couldn't agree, so the auditor's number wins) and records a mandatory reason;
+the section then reconciles even though the totals differ (`force_reconciled`,
+`force_reconcile_reason`, `reconciled_by_id` all captured). This is the only
+way a section with `scan_total_qty != physical_total_qty` may become
+`reconciled`.
 
 **Auto-close.** A section with no *genuine* variance skips `pending_review` and
 reconciles automatically on match (no `reconciled_by_id`), controlled by the

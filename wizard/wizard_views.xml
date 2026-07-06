@@ -55,15 +55,24 @@
                     <div class="oe_title">
                         <h2>Review &amp; reconcile <field name="section_name" readonly="1" class="oe_inline"/></h2>
                     </div>
-                    <div class="alert alert-info" role="status">
+                    <field name="is_mismatch" invisible="1"/>
+                    <div class="alert alert-info" role="status" invisible="is_mismatch">
                         Scan total equals the physical count, so this section is ready to
                         reconcile. Give a variance reason (and a note for 'Other') for every
                         counted line that differs from the system, then confirm. Only the
                         items counted on this rack are shown.
                     </div>
+                    <div class="alert alert-warning" role="alert" invisible="not is_mismatch">
+                        The scanner's total and the physical counter's headcount still
+                        disagree after re-scanning. As the auditor, set the authoritative
+                        physical count and record why — your figure wins and is logged
+                        against your name.
+                    </div>
                     <group>
                         <field name="scan_total_qty"/>
-                        <field name="physical_total_qty"/>
+                        <field name="physical_total_qty" string="Physical counter's figure"/>
+                        <field name="authoritative_qty" invisible="not is_mismatch"/>
+                        <field name="force_reason" invisible="not is_mismatch" required="is_mismatch"/>
                     </group>
                     <field name="line_ids" domain="[('line_status', '=', 'counted')]">
                         <list editable="bottom" decoration-danger="difference &lt; 0" decoration-success="difference &gt; 0">
