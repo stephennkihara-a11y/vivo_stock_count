@@ -215,7 +215,18 @@ class VivoCountSection(models.Model):
         by the PWA carry ``system_qty`` 0 (the snapshot lives in the
         catch-all section), so they are not treated as section-level
         variances here — the real per-product reconciliation of those
-        happens at session Apply.
+        happens at session Apply, and a genuine shortage is still caught by
+        ``vivo.count.session._check_variance_reasons`` at approval.
+
+        NOTE: this is a deliberate coupling to the snapshot design in
+        ``vivo.count.session._snapshot_system_quantities`` (baseline written
+        only to ``section_ids[:1]``). If snapshotting ever becomes per-rack —
+        populating ``system_qty`` on each rack's scanned lines — every matched
+        rack section would start routing through review instead of
+        auto-closing. The boundary is pinned by
+        ``test_section_review.test_pwa_zero_baseline_scan_auto_closes`` and
+        ``test_match_with_variance_goes_to_pending_review``; revisit both if
+        that design changes.
         """
         self.ensure_one()
         return self.line_ids.filtered(
