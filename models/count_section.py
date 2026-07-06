@@ -113,6 +113,31 @@ class VivoCountSection(models.Model):
     ]
 
     # ------------------------------------------------------------------
+    # CRUD guards — force-reconcile is a manager/auditor-only privilege
+    # ------------------------------------------------------------------
+    # `force_reconciled` is what lets a section land in `reconciled` while
+    # scan_total_qty != physical_total_qty (see `_check_reconcile_match`), i.e.
+    # it overrides the two-counter integrity check. `action_confirm_reconcile`
+    # already gates that, but the counter record rule grants counters write
+    # access to sections in an in-progress session — so a plain ORM
+    # write/create of these fields must be blocked here too, or the method
+    # gate is trivially bypassable.
+    _FORCE_FIELDS = ("force_reconciled", "force_reconcile_reason")
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        if any(
+            vals.get(f) for vals in vals_list for f in self._FORCE_FIELDS
+        ):
+            self._check_auditor_band()
+        return super().create(vals_list)
+
+    def write(self, vals):
+        if any(vals.get(f) for f in self._FORCE_FIELDS):
+            self._check_auditor_band()
+        return super().write(vals)
+
+    # ------------------------------------------------------------------
     # Computes
     # ------------------------------------------------------------------
     @api.depends("line_ids.counted_qty")
@@ -323,23 +348,28 @@ class VivoCountSection(models.Model):
                 }
             )
 
-    def _ensure_auditor(self):
-        """Only a Store Manager or higher may confirm a reconciliation.
+    def _check_auditor_band(self):
+        """Raise unless the current user is a manager/auditor band.
 
-        The superuser bypasses the gate (setup / automated flows). A plain
-        counter can never confirm — and, in particular, can never force-
-        reconcile a persistent mismatch.
+        Store Manager, Regional Manager and CFOO/Audit may confirm and
+        force-reconcile; a plain Counter may not — they cannot override the
+        two-counter integrity guarantee. Checked explicitly against all three
+        groups (not via implication) so the gate holds even if the group
+        hierarchy changes. The superuser bypasses it (setup / automation).
         """
-        self.ensure_one()
         if self.env.uid == SUPERUSER_ID:
             return
-        if not self.env.user.has_group(
-            "vivo_stock_count.group_vivo_count_store_manager"
+        user = self.env.user
+        if not (
+            user.has_group("vivo_stock_count.group_vivo_count_store_manager")
+            or user.has_group("vivo_stock_count.group_vivo_count_regional")
+            or user.has_group("vivo_stock_count.group_vivo_count_cfoo_audit")
         ):
             raise AccessError(
                 _(
-                    "Only a Store Manager (or higher) can confirm a section "
-                    "reconciliation."
+                    "Only a Store Manager, Regional Manager or CFOO/Audit user "
+                    "can confirm or force-reconcile a section. Counters cannot "
+                    "override the two-counter check."
                 )
             )
 
@@ -360,7 +390,7 @@ class VivoCountSection(models.Model):
                 raise UserError(
                     _("Section %s is not pending review.") % section.name
                 )
-            section._ensure_auditor()
+            section._check_auditor_band()
             if physical_qty is not None:
                 section.physical_total_qty = physical_qty
             if section.scan_total_qty != section.physical_total_qty:

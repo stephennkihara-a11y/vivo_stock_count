@@ -222,6 +222,27 @@ class TestSectionReview(VivoCountCommon):
         with self.assertRaises(AccessError):
             section.with_user(self.scanner).action_confirm_reconcile()
 
+    def test_counter_cannot_direct_write_force_reconciled(self):
+        """Defense in depth: bypassing the action via a raw ORM write of
+        force_reconciled is blocked for a non-manager, even though the counter
+        record rule grants section write access during an in-progress count."""
+        section = self._escalate_via_mismatch(scan=5, physical=3)
+        with self.assertRaises(AccessError):
+            section.with_user(self.scanner).write({"force_reconciled": True})
+        self.assertFalse(section.force_reconciled)
+        self.assertEqual(section.state, "pending_review")
+        # The audit-reason field is guarded too.
+        with self.assertRaises(AccessError):
+            section.with_user(self.scanner).write(
+                {"force_reconcile_reason": "sneaky"}
+            )
+
+    def test_manager_can_direct_write_force_reconciled(self):
+        """The guard must not block a legitimate manager/auditor write."""
+        section = self._escalate_via_mismatch(scan=5, physical=3)
+        section.with_user(self.store_manager).write({"force_reconciled": True})
+        self.assertTrue(section.force_reconciled)
+
     def test_forced_reconcile_via_wizard(self):
         section = self._escalate_via_mismatch(scan=5, physical=3)
         wiz = (
