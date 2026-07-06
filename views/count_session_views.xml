@@ -18,6 +18,9 @@
                 <filter name="filter_review" string="Awaiting Review" domain="[('state','=','review')]"/>
                 <filter name="filter_approved" string="Approved" domain="[('state','=','approved')]"/>
                 <filter name="filter_applied" string="Applied" domain="[('state','=','applied')]"/>
+                <separator/>
+                <filter name="filter_mode_snapshot" string="Full Inventory Count" domain="[('count_mode','=','snapshot')]"/>
+                <filter name="filter_mode_quick" string="Quick Count" domain="[('count_mode','=','scan_to_populate')]"/>
                 <filter name="filter_cfoo_band" string="CFOO Band" domain="[('tolerance_band','=','cfoo')]"/>
                 <filter name="filter_regional_band" string="Regional Band" domain="[('tolerance_band','=','regional')]"/>
                 <separator/>
@@ -25,6 +28,7 @@
 
                 <group string="Group By">
                     <filter name="group_state" string="State" context="{'group_by':'state'}"/>
+                    <filter name="group_mode" string="Count Mode" context="{'group_by':'count_mode'}"/>
                     <filter name="group_location" string="Store" context="{'group_by':'location_id'}"/>
                     <filter name="group_band" string="Variance Band" context="{'group_by':'tolerance_band'}"/>
                     <filter name="group_reviewer" string="Reviewer" context="{'group_by':'reviewer_id'}"/>
@@ -91,6 +95,7 @@
             <list string="Count Sessions" decoration-warning="is_behind_trading_deadline" decoration-success="state == 'applied'" decoration-info="state == 'draft'">
                 <field name="name"/>
                 <field name="location_id"/>
+                <field name="count_mode" optional="show"/>
                 <field name="zone_id"/>
                 <field name="scheduled_date"/>
                 <field name="sections_reconciled"/>
@@ -139,6 +144,7 @@
                     <group>
                         <group>
                             <field name="location_id" readonly="state != 'draft'"/>
+                            <field name="count_mode" readonly="state != 'draft'"/>
                             <field name="zone_id" readonly="state != 'draft'"/>
                             <field name="category_ids" widget="many2many_tags" readonly="state != 'draft'"/>
                             <field name="scheduled_date" readonly="state != 'draft'"/>

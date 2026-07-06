@@ -62,6 +62,22 @@ class VivoCountSession(models.Model):
         string="Product Categories",
         help="Optional: restrict count scope to these categories.",
     )
+    count_mode = fields.Selection(
+        [
+            ("snapshot", "Full Inventory Count"),
+            ("scan_to_populate", "Quick Count (scan to populate)"),
+        ],
+        default="snapshot",
+        required=True,
+        tracking=True,
+        help=(
+            "Full Inventory Count: pre-loads every expected SKU at start so "
+            "shortages (items never found) are detected.\n"
+            "Quick Count: starts with no lines and builds them as you scan; "
+            "system_qty is frozen per SKU on first scan. No shortage rollup — "
+            "unscanned SKUs are simply not part of the count."
+        ),
+    )
     section_ids = fields.One2many(
         "vivo.count.section",
         "session_id",
@@ -233,6 +249,7 @@ class VivoCountSession(models.Model):
         "line_ids.system_qty",
         "line_ids.unit_cost",
         "line_ids.line_status",
+        "count_mode",
     )
     def _compute_uncounted_rollup(self):
         """Flag SKUs counted on NO rack of the session (genuine shortage).
@@ -241,8 +258,17 @@ class VivoCountSession(models.Model):
         positive system snapshot but zero counted quantity everywhere was
         never found — a real potential shortage that the per-rack "not
         counted here" classification would otherwise hide.
+
+        Only meaningful in snapshot mode. Quick-count mode never pre-loads the
+        expected SKUs, so "never counted" cannot be detected and there is no
+        shortage rollup — it is reported as zero (not a false shortage) rather
+        than inferred from the partial, scan-built line set.
         """
         for session in self:
+            if session.count_mode != "snapshot":
+                session.uncounted_sku_count = 0
+                session.uncounted_shortage_value = 0.0
+                continue
             by_product = {}
             for line in session.line_ids:
                 pid = line.product_id.id
@@ -343,6 +369,39 @@ class VivoCountSession(models.Model):
                 vals["name"] = seq
         return super().create(vals_list)
 
+    def write(self, vals):
+        # The count engine is chosen at draft and frozen once counting starts —
+        # you cannot switch snapshot vs. scan-to-populate mid-count.
+        if "count_mode" in vals:
+            for session in self:
+                if session.state != "draft" and session.count_mode != vals["count_mode"]:
+                    raise UserError(
+                        _(
+                            "The count mode cannot be changed once the session "
+                            "has started (session %s is %s)."
+                        )
+                        % (session.name, session.state)
+                    )
+        return super().write(vals)
+
+    def _product_onhand(self, product):
+        """Current on-hand for a product at this session's location.
+
+        Mirrors the snapshot's basis (sum of stock.quant.quantity, child_of the
+        location) so a quick-count line's frozen system_qty matches what a full
+        snapshot would have recorded.
+        """
+        self.ensure_one()
+        # sudo: freezing the system baseline is a trusted read; a scanner
+        # (counter) triggering this at scan time may not have broad quant access.
+        quants = self.env["stock.quant"].sudo().search(
+            [
+                ("location_id", "child_of", self.location_id.id),
+                ("product_id", "=", product.id),
+            ]
+        )
+        return sum(quants.mapped("quantity"))
+
     # ------------------------------------------------------------------
     # State machine
     # ------------------------------------------------------------------
@@ -382,7 +441,10 @@ class VivoCountSession(models.Model):
                         "sequence": tpl.sequence,
                     }
                 )
-            session._snapshot_system_quantities()
+            # Snapshot mode pre-loads every expected SKU; quick-count mode
+            # starts empty and builds lines as scans arrive.
+            if session.count_mode == "snapshot":
+                session._snapshot_system_quantities()
             session.write({"state": "in_progress", "start_date": fields.Datetime.now()})
         return True
 

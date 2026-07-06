@@ -117,6 +117,30 @@ so a section awaiting sign-off blocks the session from advancing. Enforced both
 by state guards on the action methods and by a `@api.constrains` invariant that
 prevents direct writes.
 
+## Counting modes
+
+Each session picks a `count_mode` at creation (frozen once it leaves `draft` —
+you can't switch engines mid-count):
+
+- **Full Inventory Count** (`snapshot`, default) — `action_start` pre-loads a
+  line for **every** expected SKU in scope with a frozen `system_qty`. This is
+  what powers the counted-vs-not-counted split and the uncounted-SKU shortage
+  rollup below: an SKU that is never found anywhere is a genuine shortage.
+- **Quick Count** (`scan_to_populate`) — `action_start` creates **no** lines.
+  Lines are built as scans arrive: the first scan of an SKU creates its line,
+  freezes `system_qty` from the current `stock.quant` on-hand at the session's
+  location, and sets `counted_qty`; subsequent scans of the same SKU increment
+  the existing line. An SKU scanned with **zero on-hand** is still counted but
+  flagged `is_unexpected` (a likely overage / off-system item) — the scan is
+  never blocked. Because there is no full snapshot, "never counted" shortage
+  detection does not apply, so the uncounted-SKU rollup is reported as zero (not
+  a false shortage) in this mode.
+
+Everything downstream of the count is **mode-independent**: the scan-vs-physical
+match/mismatch logic, the `variance_rescan → pending_review` auditor escalation,
+the review wizard, and the force-reconcile band check all work the same in both
+modes (they compare per-section scan and physical totals, not the snapshot).
+
 ## Counted vs. "not counted here" (Option 2)
 
 Each section loads **every** SKU in scope for the store location, but a scanner

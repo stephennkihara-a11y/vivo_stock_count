@@ -85,6 +85,12 @@ class VivoCountLine(models.Model):
     counter_id = fields.Many2one("res.users", string="Counter")
     scanned_at = fields.Datetime()
 
+    is_unexpected = fields.Boolean(
+        string="Unexpected Item",
+        help="Quick Count mode: set when a scanned SKU had zero on-hand at the "
+             "location on first scan — a likely overage / off-system item.",
+    )
+
     no_barcode_flag = fields.Boolean(
         help="Set by the scanner when an item has no scannable barcode."
     )
@@ -176,17 +182,25 @@ class VivoCountLine(models.Model):
         )
         scan_type = "rescan" if section.state == "variance_rescan" else "initial"
         if not line:
-            # Pull the system snapshot if it was captured at session start; if
-            # the SKU wasn't in scope (new arrival), system_qty stays 0.
+            # In snapshot mode the SKU already has a snapshot line elsewhere
+            # (the catch-all section); a rack line starts at system_qty 0. In
+            # quick-count mode there is no snapshot, so freeze system_qty from
+            # the current on-hand at first scan and flag off-system overages.
+            system_qty = 0.0
+            is_unexpected = False
+            if section.session_id.count_mode == "scan_to_populate":
+                system_qty = section.session_id._product_onhand(product)
+                is_unexpected = system_qty <= 0.0
             line = self.create(
                 {
                     "section_id": section.id,
                     "product_id": product.id,
-                    "system_qty": 0.0,
+                    "system_qty": system_qty,
                     "counted_qty": 0.0,
                     "unit_cost": product.standard_price,
                     "counter_id": self.env.uid,
                     "scanned_at": fields.Datetime.now(),
+                    "is_unexpected": is_unexpected,
                 }
             )
         line.write(

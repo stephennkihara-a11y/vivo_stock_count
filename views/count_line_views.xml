@@ -15,6 +15,7 @@
                 <field name="difference"/>
                 <field name="variance_value"/>
                 <field name="line_status" widget="badge" decoration-success="line_status == 'counted'" decoration-muted="line_status == 'not_counted'"/>
+                <field name="is_unexpected" optional="show"/>
                 <field name="variance_reason"/>
                 <field name="currency_id" column_invisible="1"/>
             </list>
@@ -61,6 +62,7 @@
                 <field name="variance_reason"/>
                 <filter name="filter_counted" string="Counted" domain="[('line_status','=','counted')]"/>
                 <filter name="filter_not_counted" string="Not Counted Here" domain="[('line_status','=','not_counted')]"/>
+                <filter name="filter_unexpected" string="Unexpected (overage)" domain="[('is_unexpected','=',True)]"/>
                 <separator/>
                 <filter name="filter_with_variance" string="With Variance" domain="[('difference','!=',0),('line_status','=','counted')]"/>
                 <filter name="filter_shortage" string="Shortage" domain="[('difference','&lt;',0),('line_status','=','counted')]"/>
