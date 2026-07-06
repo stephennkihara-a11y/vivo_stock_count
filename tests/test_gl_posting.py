@@ -39,6 +39,9 @@ class TestGlPosting(VivoCountCommon):
         s0.with_user(self.physical).action_submit_physical_count(
             physical_qty=counted_qty
         )
+        # A variance routes to pending_review; the line has a reason, so the
+        # auditor confirms. Zero-variance counts auto-reconcile (no-op here).
+        self._confirm_section_review(s0)
         # Reconcile the second section trivially.
         self._reconcile_section(sections[1], self.scanner, self.physical, 0, 0)
         # The store manager reviews (becomes reviewer_id) and approves, so the

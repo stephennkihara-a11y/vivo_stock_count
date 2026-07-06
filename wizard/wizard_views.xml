@@ -45,6 +45,46 @@
         </field>
     </record>
 
+    <!-- Section review-and-reconcile wizard -->
+    <record id="view_vivo_section_review_wizard_form" model="ir.ui.view">
+        <field name="name">vivo.count.section.review.wizard.form</field>
+        <field name="model">vivo.count.section.review.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Review &amp; Reconcile Section">
+                <sheet>
+                    <div class="oe_title">
+                        <h2>Review &amp; reconcile <field name="section_name" readonly="1" class="oe_inline"/></h2>
+                    </div>
+                    <div class="alert alert-info" role="status">
+                        Scan total equals the physical count, so this section is ready to
+                        reconcile. Give a variance reason (and a note for 'Other') for every
+                        counted line that differs from the system, then confirm. Only the
+                        items counted on this rack are shown.
+                    </div>
+                    <group>
+                        <field name="scan_total_qty"/>
+                        <field name="physical_total_qty"/>
+                    </group>
+                    <field name="line_ids" domain="[('line_status', '=', 'counted')]">
+                        <list editable="bottom" decoration-danger="difference &lt; 0" decoration-success="difference &gt; 0">
+                            <field name="product_id" readonly="1"/>
+                            <field name="system_qty" readonly="1"/>
+                            <field name="counted_qty" readonly="1"/>
+                            <field name="difference" readonly="1"/>
+                            <field name="variance_reason" required="difference != 0"/>
+                            <field name="variance_note"/>
+                            <field name="line_status" column_invisible="1"/>
+                        </list>
+                    </field>
+                </sheet>
+                <footer>
+                    <button name="action_confirm" type="object" string="Confirm Reconciliation" class="btn-primary"/>
+                    <button string="Cancel" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
     <!-- Bounce sections wizard -->
     <record id="view_vivo_bounce_wizard_form" model="ir.ui.view">
         <field name="name">vivo.count.bounce.wizard.form</field>

@@ -126,6 +126,8 @@ class VivoCountCommon(TransactionCase):
         section.scanner_id = scanner.id
         section.with_user(scanner).action_start_scanning()
         # Seed a single line directly (mobile-app behaviour comes in Phase 3).
+        # system_qty == counted_qty, so there is no genuine variance and the
+        # section auto-reconciles on match (no pending_review).
         self.Line.create(
             {
                 "section_id": section.id,
@@ -138,4 +140,15 @@ class VivoCountCommon(TransactionCase):
         section.with_user(scanner).action_finish_scanning()
         section.physical_counter_id = physical.id
         section.with_user(physical).action_submit_physical_count(physical_qty=physical_qty)
+        return section
+
+    def _confirm_section_review(self, section, user=None):
+        """Auditor-confirm a section that landed in Pending Review.
+
+        No-op if the section already auto-reconciled (zero variance). Runs as
+        the given user, or the current (admin) env when none is supplied.
+        """
+        if section.state == "pending_review":
+            target = section.with_user(user) if user else section
+            target.action_confirm_reconcile()
         return section

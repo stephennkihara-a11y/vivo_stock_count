@@ -69,25 +69,40 @@ vivo.count.zone ─┬─< vivo.count.section.template       (store map, reused 
 **Session:** `draft → in_progress → counted → review → approved → applied`
 (cancellable from any non-applied state).
 
-**Section:** `draft → scanning → physical_count → reconciled`, with a
-`variance_rescan → scanning` loop on every scan-vs-physical mismatch.
+**Section:** `draft → scanning → physical_count → pending_review → reconciled`,
+with a `variance_rescan → scanning` loop on every scan-vs-physical mismatch.
 
-`reconciled` is reached **automatically** — never by a button — the moment the
-scan total equals the physical count. It is not a manually clickable stage.
-The full path is driven entirely from the desktop section form:
+The full path is driven from the desktop section form:
 
 - **Start Scanning** (`draft`/`variance_rescan` → `scanning`)
 - **Finish Scanning** (`scanning` → `physical_count`)
 - type the physical counter's headcount into **Physical Count**, then
-  **Submit Physical Count** (`physical_count` → `reconciled` if totals match,
-  else → `variance_rescan`)
+  **Submit Physical Count** — on a match the section moves to
+  `pending_review`; on a mismatch it loops to `variance_rescan`
+- **Review & Reconcile** (`pending_review` → `reconciled`) opens an auditor
+  wizard listing the counted lines. The auditor must give a variance reason
+  (and a note for reason *Other*) for every counted line that differs from the
+  system before confirming. Confirmation stamps `reconciled_by_id` and
+  `reconciled_at` for the audit trail.
 
-The same transitions are exposed to the mobile PWA, but neither the PWA nor a
-missing button is required to complete a count on desktop.
+**Auto-close.** A section with no *genuine* variance skips `pending_review` and
+reconciles automatically on match (no `reconciled_by_id`), controlled by the
+**Auto-close zero-variance sections** setting
+(`vivo_count.auto_close_zero_variance`, default on). A "genuine variance" is a
+counted line with a real system baseline (`system_qty` set) that differs from
+the count. Pure rack scans from the mobile PWA carry `system_qty = 0` (the
+snapshot lives in the catch-all section), so they are not section-level
+variances — their reconciliation against the system happens per-product at
+Apply. Turn the toggle off to route **every** matched section through auditor
+review.
+
+The same transitions are exposed to the mobile PWA.
 
 A session cannot reach `counted` (and therefore `review` / `approved` / `applied`)
-while any section is unreconciled — enforced both by state guards on the action
-methods and by a `@api.constrains` invariant that prevents direct writes.
+while any section is unreconciled — `pending_review` counts as unreconciled,
+so a section awaiting sign-off blocks the session from advancing. Enforced both
+by state guards on the action methods and by a `@api.constrains` invariant that
+prevents direct writes.
 
 ## Counted vs. "not counted here" (Option 2)
 

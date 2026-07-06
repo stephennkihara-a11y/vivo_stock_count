@@ -38,3 +38,7 @@ access_approval_wizard_cfoo,vivo.count.approval.wizard cfoo,model_vivo_count_app
 access_bounce_wizard_store_manager,vivo.count.bounce.wizard store manager,model_vivo_count_bounce_wizard,group_vivo_count_store_manager,1,1,1,1
 access_bounce_wizard_regional,vivo.count.bounce.wizard regional,model_vivo_count_bounce_wizard,group_vivo_count_regional,1,1,1,1
 access_bounce_wizard_cfoo,vivo.count.bounce.wizard cfoo,model_vivo_count_bounce_wizard,group_vivo_count_cfoo_audit,1,1,1,1
+access_section_review_wizard_counter,vivo.count.section.review.wizard counter,model_vivo_count_section_review_wizard,group_vivo_count_counter,1,1,1,1
+access_section_review_wizard_store_manager,vivo.count.section.review.wizard store manager,model_vivo_count_section_review_wizard,group_vivo_count_store_manager,1,1,1,1
+access_section_review_wizard_regional,vivo.count.section.review.wizard regional,model_vivo_count_section_review_wizard,group_vivo_count_regional,1,1,1,1
+access_section_review_wizard_cfoo,vivo.count.section.review.wizard cfoo,model_vivo_count_section_review_wizard,group_vivo_count_cfoo_audit,1,1,1,1

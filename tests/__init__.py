@@ -8,3 +8,4 @@ from . import test_concurrent_scanning
 from . import test_gl_posting
 from . import test_reports
 from . import test_counted_split
+from . import test_section_review

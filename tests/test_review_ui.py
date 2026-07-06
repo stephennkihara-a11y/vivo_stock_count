@@ -63,7 +63,10 @@ class TestReviewUI(VivoCountCommon):
     def test_variance_summary_counts(self):
         session = self._new_session()
         sections = self._start_and_get_sections(session)
-        # Section 0 zero-variance, Section 1 has 1 variance line unreasoned.
+        # Section 0 zero-variance; section 1 has 1 reasoned variance line.
+        # A section can no longer reconcile while a counted variance lacks a
+        # reason (the review gate blocks it), so a reconciled variance is
+        # always reasoned -> unreasoned_line_count is 0.
         self._reconcile_section(sections[0], self.scanner, self.physical, 5)
         s = sections[1]
         s.scanner_id = self.scanner.id
@@ -75,15 +78,17 @@ class TestReviewUI(VivoCountCommon):
                 "system_qty": 10.0,
                 "counted_qty": 9.0,
                 "unit_cost": self.product_a.standard_price,
+                "variance_reason": "miscount",
             }
         )
         s.with_user(self.scanner).action_finish_scanning()
         s.physical_counter_id = self.physical.id
         s.with_user(self.physical).action_submit_physical_count(physical_qty=9)
+        self._confirm_section_review(s)
         session.invalidate_recordset()
         self.assertEqual(session.variance_line_count, 1)
         self.assertEqual(session.sections_with_variance, 1)
-        self.assertEqual(session.unreasoned_line_count, 1)
+        self.assertEqual(session.unreasoned_line_count, 0)
 
     # ------------------------------------------------------------------
     # Approval wizard
@@ -109,31 +114,25 @@ class TestReviewUI(VivoCountCommon):
             s.with_user(self.scanner).action_finish_scanning()
             s.physical_counter_id = self.physical.id
             s.with_user(self.physical).action_submit_physical_count(physical_qty=9)
+            # Variance -> pending_review; line has a reason, so confirm it.
+            self._confirm_section_review(s)
         else:
             self._reconcile_section(sections[1], self.scanner, self.physical, 5)
         session.action_submit_for_review()
         return session
 
     def test_approval_wizard_blocks_when_unreasoned_lines(self):
-        session = self._new_session()
-        sections = self._start_and_get_sections(session)
-        self._reconcile_section(sections[0], self.scanner, self.physical, 5)
-        s = sections[1]
-        s.scanner_id = self.scanner.id
-        s.with_user(self.scanner).action_start_scanning()
-        self.Line.create(
-            {
-                "section_id": s.id,
-                "product_id": self.product_a.id,
-                "system_qty": 10.0,
-                "counted_qty": 9.0,
-                "unit_cost": self.product_a.standard_price,
-            }
+        # The section review gate now requires a reason before a variance can
+        # reconcile, so build a reconciled+reasoned variance, then simulate an
+        # auditor clearing the reason afterwards. The approval wizard must
+        # still catch the resulting unreasoned line as a blocker (defence in
+        # depth).
+        session = self._session_in_review(with_variance=True)
+        varied = session.line_ids.filtered(
+            lambda l: l.line_status == "counted" and l.difference != 0.0
         )
-        s.with_user(self.scanner).action_finish_scanning()
-        s.physical_counter_id = self.physical.id
-        s.with_user(self.physical).action_submit_physical_count(physical_qty=9)
-        session.action_submit_for_review()
+        varied.variance_reason = False
+        session.invalidate_recordset()
         wiz = (
             self.env["vivo.count.approval.wizard"]
             .with_user(self.store_manager)

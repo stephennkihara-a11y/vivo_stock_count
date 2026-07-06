@@ -7,6 +7,7 @@ SECTION_STATES = [
     ("scanning", "Scanning"),
     ("physical_count", "Physical Count"),
     ("variance_rescan", "Variance Re-scan"),
+    ("pending_review", "Pending Review"),
     ("reconciled", "Reconciled"),
 ]
 
@@ -66,6 +67,14 @@ class VivoCountSection(models.Model):
 
     rescan_count = fields.Integer(default=0, readonly=True, copy=False)
     reconciled_at = fields.Datetime(readonly=True, copy=False)
+    reconciled_by_id = fields.Many2one(
+        "res.users",
+        string="Reconciled By",
+        readonly=True,
+        copy=False,
+        help="Auditor who confirmed the reconciliation from Pending Review. "
+             "Empty when the section auto-reconciled (no genuine variance).",
+    )
 
     # Soft-lock: the scanner currently working this section. Released after
     # `vivo_count.section_lock_minutes` of inactivity.
@@ -161,7 +170,14 @@ class VivoCountSection(models.Model):
         return True
 
     def action_submit_physical_count(self, physical_qty=None):
-        """physical_count -> reconciled (if match) | variance_rescan (if not).
+        """physical_count -> pending_review | reconciled | variance_rescan.
+
+        On a scan-vs-physical match the section routes to `pending_review`
+        for auditor sign-off (see `action_confirm_reconcile`). If the
+        `vivo_count.auto_close_zero_variance` toggle is on (default) and the
+        section carries no genuine variance to audit, it reconciles
+        automatically, skipping the review step. A mismatch still routes to
+        `variance_rescan` unchanged.
 
         Required-different-user enforced by `_check_segregation_of_duties`.
         """
@@ -175,16 +191,119 @@ class VivoCountSection(models.Model):
             if physical_qty is not None:
                 section.physical_total_qty = physical_qty
             if section.scan_total_qty == section.physical_total_qty:
-                section.write(
-                    {
-                        "state": "reconciled",
-                        "reconciled_at": fields.Datetime.now(),
-                    }
-                )
-                section.session_id._maybe_auto_advance_to_counted()
+                if (
+                    section._auto_close_zero_variance_enabled()
+                    and not section._review_variance_lines()
+                ):
+                    # No genuine variance -> reconcile automatically (no auditor).
+                    section._do_reconcile(reconciled_by=False)
+                else:
+                    # Genuine variance -> hold for auditor review.
+                    section.write({"state": "pending_review"})
             else:
                 section.write({"state": "variance_rescan", "rescan_count": section.rescan_count + 1})
         return True
+
+    # ------------------------------------------------------------------
+    # Auditor-confirmed reconciliation
+    # ------------------------------------------------------------------
+    def _review_variance_lines(self):
+        """Counted lines with a genuine count-vs-system variance to audit.
+
+        A line qualifies when the system expected a quantity
+        (``system_qty`` set) and the count differs. Pure rack scans created
+        by the PWA carry ``system_qty`` 0 (the snapshot lives in the
+        catch-all section), so they are not treated as section-level
+        variances here — the real per-product reconciliation of those
+        happens at session Apply.
+        """
+        self.ensure_one()
+        return self.line_ids.filtered(
+            lambda l: l.line_status == "counted"
+            and l.system_qty
+            and l.difference != 0.0
+        )
+
+    def _auto_close_zero_variance_enabled(self):
+        val = self.env["ir.config_parameter"].sudo().get_param(
+            "vivo_count.auto_close_zero_variance", "True"
+        )
+        return str(val).strip().lower() not in ("false", "0", "")
+
+    def _do_reconcile(self, reconciled_by=None):
+        """Transition to reconciled, stamping the audit trail, then let the
+        session auto-advance. ``reconciled_by`` is the confirming auditor, or
+        False for an automatic zero-variance close."""
+        for section in self:
+            section.write(
+                {
+                    "state": "reconciled",
+                    "reconciled_at": fields.Datetime.now(),
+                    "reconciled_by_id": reconciled_by.id if reconciled_by else False,
+                }
+            )
+            section.session_id._maybe_auto_advance_to_counted()
+        return True
+
+    def _check_counted_variance_reasons(self):
+        """Every counted line with a variance needs a reason (and a note when
+        the reason is 'Other') before the section can be reconciled."""
+        self.ensure_one()
+        counted = self.line_ids.filtered(lambda l: l.line_status == "counted")
+        missing = counted.filtered(
+            lambda l: l.difference != 0.0 and not l.variance_reason
+        )
+        if missing:
+            raise ValidationError(
+                _(
+                    "Section %(name)s cannot be reconciled — these counted lines "
+                    "have a variance but no reason: %(lines)s"
+                )
+                % {
+                    "name": self.name,
+                    "lines": ", ".join(missing.mapped("product_id.display_name")),
+                }
+            )
+        bad_other = counted.filtered(
+            lambda l: l.variance_reason == "other" and not l.variance_note
+        )
+        if bad_other:
+            raise ValidationError(
+                _(
+                    "Section %(name)s: lines with reason 'Other' need a note: "
+                    "%(lines)s"
+                )
+                % {
+                    "name": self.name,
+                    "lines": ", ".join(bad_other.mapped("product_id.display_name")),
+                }
+            )
+
+    def action_confirm_reconcile(self):
+        """pending_review -> reconciled, stamping reconciled_by_id with the
+        auditor. Validates variance reasons first."""
+        for section in self:
+            if section.state != "pending_review":
+                raise UserError(
+                    _("Section %s is not pending review.") % section.name
+                )
+            section._check_counted_variance_reasons()
+            section._do_reconcile(reconciled_by=self.env.user)
+        return True
+
+    def action_open_section_review_wizard(self):
+        """Open the Review & Reconcile wizard for a pending-review section."""
+        self.ensure_one()
+        if self.state != "pending_review":
+            raise UserError(_("Section %s is not pending review.") % self.name)
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Review & Reconcile — %s") % self.name,
+            "res_model": "vivo.count.section.review.wizard",
+            "view_mode": "form",
+            "target": "new",
+            "context": {"default_section_id": self.id},
+        }
 
     def _bounce_from_review(self):
         """Manager-driven bounce from review back to scanning.

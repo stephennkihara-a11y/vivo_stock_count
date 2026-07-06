@@ -139,7 +139,10 @@ class TestCountedSplit(VivoCountCommon):
 
     def test_counted_line_with_variance_still_needs_reason(self):
         """Regression guard: a line actually counted on the rack that differs
-        from the system still requires a reason before approval."""
+        from the system is a genuine variance — it routes to review and cannot
+        reconcile without a reason."""
+        from odoo.exceptions import ValidationError
+
         session = self._new_session()
         sections = self._start_and_get_sections(session)
         section = sections[0]
@@ -150,10 +153,6 @@ class TestCountedSplit(VivoCountCommon):
         section.with_user(self.scanner).action_finish_scanning()
         section.physical_counter_id = self.physical.id
         section.with_user(self.physical).action_submit_physical_count(physical_qty=4)
-        self._reconcile_section(sections[1], self.scanner, self.physical, 0, 0)
-        session.action_submit_for_review()
-        self.assertEqual(session.unreasoned_line_count, 1)
-        from odoo.exceptions import UserError
-
-        with self.assertRaises(UserError):
-            session.with_user(self.store_manager).action_approve()
+        self.assertEqual(section.state, "pending_review")
+        with self.assertRaises(ValidationError):
+            section.action_confirm_reconcile()

@@ -83,7 +83,11 @@ class TestSectionReconciliation(VivoCountCommon):
         self.assertEqual(section.locked_by_id, self.physical)
 
     def test_variance_reason_required_for_non_zero_difference(self):
-        """AC #11: cannot approve while a variance line has no reason."""
+        """AC #11: a counted variance cannot reconcile without a reason.
+
+        The gate now lives at the section review step (pending_review ->
+        reconciled), so confirmation is blocked, not approval.
+        """
         session = self._new_session()
         sections = self._start_and_get_sections(session)
         section = sections[0]
@@ -102,11 +106,10 @@ class TestSectionReconciliation(VivoCountCommon):
         section.with_user(self.scanner).action_finish_scanning()
         section.physical_counter_id = self.physical.id
         section.with_user(self.physical).action_submit_physical_count(physical_qty=9)
-        # Reconcile the rest.
-        self._reconcile_section(sections[1], self.scanner, self.physical, 0, 0)
-        session.action_submit_for_review()
-        with self.assertRaises(UserError):
-            session.with_user(self.store_manager).action_approve()
+        # Match with a genuine variance -> held for auditor review.
+        self.assertEqual(section.state, "pending_review")
+        with self.assertRaises(ValidationError):
+            section.action_confirm_reconcile()
 
     def test_other_reason_requires_note(self):
         session = self._new_session()
@@ -127,13 +130,13 @@ class TestSectionReconciliation(VivoCountCommon):
         section.with_user(self.scanner).action_finish_scanning()
         section.physical_counter_id = self.physical.id
         section.with_user(self.physical).action_submit_physical_count(physical_qty=9)
-        self._reconcile_section(sections[1], self.scanner, self.physical, 0, 0)
-        session.action_submit_for_review()
-        with self.assertRaises(UserError):
-            session.with_user(self.store_manager).action_approve()
+        self.assertEqual(section.state, "pending_review")
+        # 'Other' needs a free-text note before the section can reconcile.
+        with self.assertRaises(ValidationError):
+            section.action_confirm_reconcile()
         line.variance_note = "explained"
-        session.with_user(self.store_manager).action_approve()
-        self.assertEqual(session.state, "approved")
+        section.action_confirm_reconcile()
+        self.assertEqual(section.state, "reconciled")
 
     def test_rescan_count_tracks_loops(self):
         session = self._new_session()

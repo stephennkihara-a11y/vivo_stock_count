@@ -41,6 +41,9 @@ class TestAccessRights(VivoCountCommon):
         section.with_user(self.scanner).action_finish_scanning()
         section.physical_counter_id = self.physical.id
         section.with_user(self.physical).action_submit_physical_count(physical_qty=counted)
+        # A genuine variance now routes to pending_review; the line already
+        # carries a reason, so an auditor can confirm the reconciliation.
+        self._confirm_section_review(section)
         session.action_submit_for_review()
         return session
 

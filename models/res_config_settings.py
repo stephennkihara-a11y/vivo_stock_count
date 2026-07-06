@@ -26,6 +26,15 @@ class ResConfigSettings(models.TransientModel):
         config_parameter="vivo_count.section_lock_minutes",
         default=30,
     )
+    vivo_count_auto_close_zero_variance = fields.Boolean(
+        string="Auto-close zero-variance sections",
+        config_parameter="vivo_count.auto_close_zero_variance",
+        default=True,
+        help="When on, a section whose counted lines all match the system "
+             "snapshot reconciles automatically on a scan-vs-physical match, "
+             "skipping auditor review — so only genuine variances require "
+             "sign-off. When off, every matched section goes to Pending Review.",
+    )
     vivo_count_trading_deadline = fields.Char(
         string="Store trading deadline",
         config_parameter="vivo_count.trading_deadline",

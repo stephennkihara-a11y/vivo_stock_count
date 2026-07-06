@@ -16,6 +16,7 @@
                 <filter name="state_scanning" string="Scanning" domain="[('state','=','scanning')]"/>
                 <filter name="state_physical" string="Physical Count" domain="[('state','=','physical_count')]"/>
                 <filter name="state_variance" string="Variance Re-scan" domain="[('state','=','variance_rescan')]"/>
+                <filter name="state_pending" string="Pending Review" domain="[('state','=','pending_review')]"/>
                 <filter name="state_reconciled" string="Reconciled" domain="[('state','=','reconciled')]"/>
                 <separator/>
                 <filter name="filter_mine" string="My Sections" domain="['|',('scanner_id','=',uid),('physical_counter_id','=',uid)]"/>
@@ -87,7 +88,7 @@
         <field name="name">vivo.count.section.list</field>
         <field name="model">vivo.count.section</field>
         <field name="arch" type="xml">
-            <list string="Sections" decoration-success="state == 'reconciled'" decoration-warning="state in ('scanning','physical_count')" decoration-danger="state == 'variance_rescan'" decoration-muted="state == 'draft'">
+            <list string="Sections" decoration-success="state == 'reconciled'" decoration-warning="state in ('scanning','physical_count')" decoration-info="state == 'pending_review'" decoration-danger="state == 'variance_rescan'" decoration-muted="state == 'draft'">
                 <field name="session_id"/>
                 <field name="zone_id"/>
                 <field name="name"/>
@@ -112,16 +113,18 @@
                     <button name="action_start_scanning" type="object" string="Start Scanning" class="btn-primary" invisible="state not in ('draft','variance_rescan')"/>
                     <button name="action_finish_scanning" type="object" string="Finish Scanning" class="btn-primary" invisible="state != 'scanning'"/>
                     <button name="action_submit_physical_count" type="object" string="Submit Physical Count" class="btn-primary" invisible="state != 'physical_count'"/>
-                    <field name="state" widget="statusbar" statusbar_visible="draft,scanning,physical_count,reconciled"/>
+                    <button name="action_open_section_review_wizard" type="object" string="Review &amp; Reconcile" class="btn-primary" invisible="state != 'pending_review'"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,scanning,physical_count,pending_review,reconciled"/>
                 </header>
                 <sheet>
                     <div class="alert alert-info" role="status" invisible="state == 'reconciled'">
-                        Workflow: <strong>Draft → Scanning → Physical Count → Reconciled</strong>
+                        Workflow: <strong>Draft → Scanning → Physical Count → Pending Review → Reconciled</strong>
                         (or → Variance Re-scan if totals disagree). Enter the physical
                         counter's headcount in <strong>Physical Count</strong>, then
-                        <strong>Submit Physical Count</strong>. Reconciled is reached
-                        <em>automatically</em> when the scan total equals the physical
-                        count — it is not a button you click.
+                        <strong>Submit Physical Count</strong>. On a match the section
+                        moves to <strong>Pending Review</strong> for auditor sign-off via
+                        <strong>Review &amp; Reconcile</strong>; sections with no genuine
+                        variance reconcile automatically (configurable).
                     </div>
                     <group>
                         <group>
@@ -137,6 +140,7 @@
                             <field name="physical_total_qty"/>
                             <field name="rescan_count"/>
                             <field name="reconciled_at"/>
+                            <field name="reconciled_by_id"/>
                             <field name="locked_by_id"/>
                             <field name="locked_at"/>
                         </group>

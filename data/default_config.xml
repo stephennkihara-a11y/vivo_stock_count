@@ -25,5 +25,9 @@
             <field name="key">vivo_count.fx_source</field>
             <field name="value">finance_bulletin</field>
         </record>
+        <record id="cp_auto_close_zero_variance" model="ir.config_parameter">
+            <field name="key">vivo_count.auto_close_zero_variance</field>
+            <field name="value">True</field>
+        </record>
     </data>
 </odoo>

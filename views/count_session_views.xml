@@ -177,7 +177,7 @@
                     <notebook>
                         <page string="Sections">
                             <field name="section_ids">
-                                <list decoration-success="state == 'reconciled'" decoration-warning="state in ('scanning','physical_count')" decoration-danger="state == 'variance_rescan'" decoration-muted="state == 'draft'">
+                                <list decoration-success="state == 'reconciled'" decoration-warning="state in ('scanning','physical_count')" decoration-info="state == 'pending_review'" decoration-danger="state == 'variance_rescan'" decoration-muted="state == 'draft'">
                                     <field name="sequence"/>
                                     <field name="name"/>
                                     <field name="zone_id"/>
