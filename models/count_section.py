@@ -5,10 +5,16 @@ from odoo.exceptions import AccessError, UserError, ValidationError
 SECTION_STATES = [
     ("draft", "Draft"),
     ("scanning", "Scanning"),
-    ("physical_count", "Physical Count"),
-    ("variance_rescan", "Variance Re-scan"),
+    # Approve-then-review flow: the scanner scans, a DIFFERENT second person
+    # approves (or rejects) the scanned result, then a manager/auditor reviews,
+    # records a variance note, and reconciles.
+    ("physical_review", "Physical Review"),
     ("pending_review", "Pending Review"),
     ("reconciled", "Reconciled"),
+    # Legacy states retained only for data compatibility with sessions counted
+    # under the old independent-dual-count flow. The new flow never enters them.
+    ("physical_count", "Physical Count (legacy)"),
+    ("variance_rescan", "Variance Re-scan (legacy)"),
 ]
 
 
@@ -31,7 +37,11 @@ class VivoCountSection(models.Model):
     state = fields.Selection(SECTION_STATES, default="draft", required=True, copy=False)
 
     scanner_id = fields.Many2one("res.users", string="Scanner")
-    physical_counter_id = fields.Many2one("res.users", string="Physical Counter")
+    # The second person in the approve-then-review flow: they APPROVE the
+    # scanned result (they do not independently re-count). Must differ from the
+    # scanner — enforced by _check_segregation_of_duties. Field name kept for
+    # data/report continuity with the prior dual-count flow.
+    physical_counter_id = fields.Many2one("res.users", string="Approver (2nd person)")
 
     line_ids = fields.One2many("vivo.count.line", "section_id", string="SKU Lines")
 
@@ -92,6 +102,15 @@ class VivoCountSection(models.Model):
         copy=False,
         help="Why the auditor force-reconciled a persistent scan-vs-physical mismatch.",
     )
+    # Mandatory note the reviewer records when reconciling a section in the
+    # approve-then-review flow (there is no independent physical count to match,
+    # so a recorded variance note is the integrity gate for reconciliation).
+    review_note = fields.Text(
+        string="Reviewer Variance Note",
+        readonly=True,
+        copy=False,
+        help="Mandatory note the manager/auditor records when reconciling.",
+    )
 
     # Soft-lock: the scanner currently working this section. Released after
     # `vivo_count.section_lock_minutes` of inactivity.
@@ -133,7 +152,12 @@ class VivoCountSection(models.Model):
         return super().create(vals_list)
 
     def write(self, vals):
-        if any(vals.get(f) for f in self._FORCE_FIELDS):
+        # Force-reconcile fields stay manager-only (preserves the earlier
+        # security fix). The approve-then-review flow makes EVERY reconcile a
+        # manager decision, so moving a section into `reconciled` by any write
+        # path is also gated here — closing the direct-write bypass the counter
+        # record rule would otherwise leave open.
+        if any(vals.get(f) for f in self._FORCE_FIELDS) or vals.get("state") == "reconciled":
             self._check_auditor_band()
         return super().write(vals)
 
@@ -161,13 +185,12 @@ class VivoCountSection(models.Model):
             section.not_counted_line_count = not_counted
             section.counted_line_count = len(section.line_ids) - not_counted
 
-    @api.depends("scan_total_qty", "physical_total_qty", "state", "force_reconciled")
+    @api.depends("state")
     def _compute_is_reconciled(self):
+        # Reconciliation is now a reviewer decision (approve-then-review), not a
+        # scan==physical match, so the state alone is authoritative.
         for section in self:
-            section.is_reconciled = section.state == "reconciled" and (
-                section.scan_total_qty == section.physical_total_qty
-                or section.force_reconciled
-            )
+            section.is_reconciled = section.state == "reconciled"
 
     @api.depends("line_ids.no_barcode_flag", "line_ids.no_barcode_resolved")
     def _compute_no_barcode(self):
@@ -200,7 +223,7 @@ class VivoCountSection(models.Model):
         return True
 
     def action_finish_scanning(self):
-        """scanning -> physical_count."""
+        """scanning -> physical_review (the second person's approve/reject stage)."""
         for section in self:
             if section.state != "scanning":
                 raise UserError(_("Section %s is not in scanning state.") % section.name)
@@ -208,7 +231,60 @@ class VivoCountSection(models.Model):
                 raise UserError(
                     _("Section %s has unresolved 'no barcode' lines.") % section.name
                 )
-            section.write({"state": "physical_count", "locked_by_id": False, "locked_at": False})
+            section.write({"state": "physical_review", "locked_by_id": False, "locked_at": False})
+        return True
+
+    def action_approve_scan(self):
+        """physical_review -> pending_review.
+
+        The second person approves the scanned result (they do NOT re-count).
+        They are stamped as the approver (physical_counter_id); segregation of
+        duties (approver != scanner) is enforced by
+        `_check_segregation_of_duties` on that write.
+        """
+        for section in self:
+            if section.state != "physical_review":
+                raise UserError(
+                    _("Section %s is not awaiting approval.") % section.name
+                )
+            section.write(
+                {
+                    "physical_counter_id": self.env.user.id,
+                    "state": "pending_review",
+                }
+            )
+        return True
+
+    def action_reject_scan(self):
+        """physical_review -> scanning (reject; the scanner re-scans).
+
+        Increments rescan_count and clears the pending approval. The scanned
+        lines are preserved so the scanner can correct rather than start over
+        (a manager bounce, `_bounce_from_review`, is the wipe-and-redo path).
+        """
+        for section in self:
+            if section.state != "physical_review":
+                raise UserError(
+                    _("Section %s is not awaiting approval.") % section.name
+                )
+            if (
+                section.scanner_id
+                and self.env.user == section.scanner_id
+                and self.env.uid != SUPERUSER_ID
+            ):
+                raise ValidationError(
+                    _("The scanner cannot reject their own scan (section %s).")
+                    % section.name
+                )
+            section.write(
+                {
+                    "state": "scanning",
+                    "physical_counter_id": False,
+                    "rescan_count": section.rescan_count + 1,
+                    "locked_by_id": False,
+                    "locked_at": False,
+                }
+            )
         return True
 
     def action_submit_physical_count(self, physical_qty=None):
@@ -319,8 +395,13 @@ class VivoCountSection(models.Model):
         the reason is 'Other') before the section can be reconciled."""
         self.ensure_one()
         counted = self.line_ids.filtered(lambda l: l.line_status == "counted")
+        # Only lines with a real system baseline (system_qty set) can carry a
+        # section-level variance to reason for. Pure PWA rack scans have
+        # system_qty 0 (the snapshot lives in the catch-all section), so they
+        # are not treated as per-line variances here — consistent with
+        # `_review_variance_lines`.
         missing = counted.filtered(
-            lambda l: l.difference != 0.0 and not l.variance_reason
+            lambda l: l.system_qty and l.difference != 0.0 and not l.variance_reason
         )
         if missing:
             raise ValidationError(
@@ -373,17 +454,18 @@ class VivoCountSection(models.Model):
                 )
             )
 
-    def action_confirm_reconcile(self, physical_qty=None, force_reason=None):
-        """pending_review -> reconciled, stamping reconciled_by_id with the
-        auditor. Validates variance reasons first.
+    def action_confirm_reconcile(self, review_note=None, physical_qty=None, force_reason=None):
+        """pending_review -> reconciled, stamping reconciled_by_id.
 
-        Two paths converge here:
-        - scan == physical (variance sign-off): the auditor accepts the
-          reconciled counts; per-line variance reasons are required.
-        - scan != physical (persistent mismatch escalated after re-scans): the
-          auditor sets an authoritative ``physical_qty`` (their number wins)
-          and must record a ``force_reason`` for the audit trail. The section
-          reconciles even though the totals differ (``force_reconciled``).
+        Approve-then-review flow: the reviewer must be a manager/auditor band
+        (`_check_auditor_band`) and must record a MANDATORY variance note. There
+        is no independent physical count to match — the recorded note is the
+        integrity gate (`_check_reconcile_requires_note`).
+
+        Legacy force path preserved: if an authoritative ``physical_qty`` is
+        supplied and differs from the scan total, the override is recorded via
+        ``force_reconciled`` / ``force_reconcile_reason`` (whose write is itself
+        band-guarded), keeping that control intact.
         """
         for section in self:
             if section.state != "pending_review":
@@ -391,29 +473,23 @@ class VivoCountSection(models.Model):
                     _("Section %s is not pending review.") % section.name
                 )
             section._check_auditor_band()
+            note = review_note or force_reason
+            if not note:
+                raise ValidationError(
+                    _(
+                        "Section %s: a variance note is required to reconcile."
+                    )
+                    % section.name
+                )
+            vals = {"review_note": note}
             if physical_qty is not None:
                 section.physical_total_qty = physical_qty
-            if section.scan_total_qty != section.physical_total_qty:
-                # Auditor is forcing a reconciliation over a real disagreement.
-                if not force_reason:
-                    raise ValidationError(
-                        _(
-                            "Section %(name)s: the scan total (%(scan)s) and the "
-                            "physical count (%(phys)s) still disagree. Record a "
-                            "reason to reconcile on your authoritative figure."
-                        )
-                        % {
-                            "name": section.name,
-                            "scan": section.scan_total_qty,
-                            "phys": section.physical_total_qty,
-                        }
-                    )
-                section.write(
-                    {
-                        "force_reconciled": True,
-                        "force_reconcile_reason": force_reason,
-                    }
-                )
+            if section.physical_total_qty and section.scan_total_qty != section.physical_total_qty:
+                # Authoritative physical figure differs from the scan — record
+                # the override on the audit trail (band-guarded write).
+                vals["force_reconciled"] = True
+                vals["force_reconcile_reason"] = note
+            section.write(vals)
             section._check_counted_variance_reasons()
             section._do_reconcile(reconciled_by=self.env.user)
         return True
@@ -562,6 +638,23 @@ class VivoCountSection(models.Model):
         self.action_finish_scanning()
         return {"id": self.id, "state": self.state}
 
+    def approve_scan_pwa(self, idempotency_key=None):
+        """Second person approves the scanned result (physical_review ->
+        pending_review). Idempotent for offline replay."""
+        self.ensure_one()
+        if idempotency_key and self.last_physical_idem_key == idempotency_key:
+            return {"id": self.id, "state": self.state, "idempotent": True}
+        self.action_approve_scan()
+        if idempotency_key:
+            self.last_physical_idem_key = idempotency_key
+        return {"id": self.id, "state": self.state}
+
+    def reject_scan_pwa(self):
+        """Second person rejects the scan (physical_review -> scanning)."""
+        self.ensure_one()
+        self.action_reject_scan()
+        return {"id": self.id, "state": self.state, "rescan_count": self.rescan_count}
+
     def submit_physical_pwa(self, physical_qty, idempotency_key=None):
         """Physical counter submits their independent headcount.
 
@@ -590,20 +683,23 @@ class VivoCountSection(models.Model):
             "is_reconciled": self.is_reconciled,
         }
 
-    @api.constrains("state", "scan_total_qty", "physical_total_qty")
-    def _check_reconcile_match(self):
-        """AC #2: cannot land in `reconciled` unless scan == physical — unless
-        an auditor has explicitly force-reconciled a persistent mismatch."""
+    @api.constrains("state", "review_note", "force_reconcile_reason")
+    def _check_reconcile_requires_note(self):
+        """Approve-then-review integrity gate: a section may only be
+        `reconciled` once a reviewer has recorded the mandatory variance note.
+
+        Replaces the old scan==physical match — there is no longer an
+        independent physical count. The legacy force_reconcile_reason also
+        satisfies the gate for any section reconciled via that path.
+        """
         for section in self:
-            if (
-                section.state == "reconciled"
-                and section.scan_total_qty != section.physical_total_qty
-                and not section.force_reconciled
+            if section.state == "reconciled" and not (
+                section.review_note or section.force_reconcile_reason
             ):
                 raise ValidationError(
                     _(
-                        "Section %s cannot be reconciled — scan total %s does not "
-                        "match physical count %s."
+                        "Section %s cannot be reconciled without a reviewer's "
+                        "variance note."
                     )
-                    % (section.name, section.scan_total_qty, section.physical_total_qty)
+                    % section.name
                 )

@@ -111,13 +111,16 @@ class TestConcurrentScanning(VivoCountCommon):
             self.assertEqual(line.scan_count, qty)
             self.assertEqual(line.counter_id, scanner)
 
-        # Now finish + reconcile independently with two physical counters.
+        # Now finish + approve independently with two approvers, then a
+        # manager reviews and reconciles each.
         s1.with_user(self.scanner1).finish_scanning_pwa()
         s2.with_user(self.scanner2).finish_scanning_pwa()
         s3.with_user(self.scanner3).finish_scanning_pwa()
-        s1.with_user(self.physical1).submit_physical_pwa(physical_qty=10)
-        s2.with_user(self.physical2).submit_physical_pwa(physical_qty=10)
-        s3.with_user(self.physical1).submit_physical_pwa(physical_qty=10)
+        s1.with_user(self.physical1).approve_scan_pwa()
+        s2.with_user(self.physical2).approve_scan_pwa()
+        s3.with_user(self.physical1).approve_scan_pwa()
+        for sec in (s1, s2, s3):
+            sec.with_user(self.store_manager).action_confirm_reconcile(review_note="ok")
         self.assertEqual(s1.state, "reconciled")
         self.assertEqual(s2.state, "reconciled")
         self.assertEqual(s3.state, "reconciled")

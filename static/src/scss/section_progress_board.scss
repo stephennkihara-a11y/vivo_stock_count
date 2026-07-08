@@ -36,13 +36,17 @@
             background: #fff8e1;
         }
 
-        // amber/orange — physical_count
-        &.state_physical_count {
+        // amber/orange — physical_review (second person approves/rejects)
+        &.state_physical_review {
             border-left-color: #fd7e14;
             background: #fff3e0;
         }
 
-        // red — variance_rescan
+        // legacy states (old dual-count flow), kept for data compatibility
+        &.state_physical_count {
+            border-left-color: #fd7e14;
+            background: #fff3e0;
+        }
         &.state_variance_rescan {
             border-left-color: #dc3545;
             background: #fdecea;

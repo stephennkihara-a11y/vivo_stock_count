@@ -22,8 +22,9 @@ class TestSectionReconciliation(VivoCountCommon):
         self.assertTrue(section.is_reconciled)
         self.assertTrue(section.reconciled_at)
 
-    def test_section_bounces_to_rescan_on_mismatch(self):
-        """AC #2 negative + AC #5 re-scan loop."""
+    def test_reject_sends_back_to_scanning(self):
+        """New flow: the second person rejects the scan -> back to scanning,
+        rescan_count incremented; then a clean approve+review reconciles."""
         session = self._new_session()
         sections = self._start_and_get_sections(session)
         section = sections[0]
@@ -39,14 +40,17 @@ class TestSectionReconciliation(VivoCountCommon):
             }
         )
         section.with_user(self.scanner).action_finish_scanning()
-        section.physical_counter_id = self.physical.id
-        section.with_user(self.physical).action_submit_physical_count(physical_qty=4)
-        self.assertEqual(section.state, "variance_rescan")
+        self.assertEqual(section.state, "physical_review")
+        section.with_user(self.physical).action_reject_scan()
+        self.assertEqual(section.state, "scanning")
         self.assertEqual(section.rescan_count, 1)
-        # Loop: re-scan and reconcile.
-        section.with_user(self.scanner).action_start_scanning()
+        self.assertFalse(section.physical_counter_id)
+        # Re-scan, approve, review, reconcile.
         section.with_user(self.scanner).action_finish_scanning()
-        section.with_user(self.physical).action_submit_physical_count(physical_qty=5)
+        section.with_user(self.physical).action_approve_scan()
+        section.with_user(self.store_manager).action_confirm_reconcile(
+            review_note="recount clean"
+        )
         self.assertEqual(section.state, "reconciled")
 
     def test_segregation_of_duties_on_section(self):
@@ -58,12 +62,12 @@ class TestSectionReconciliation(VivoCountCommon):
         with self.assertRaises(ValidationError):
             section.physical_counter_id = self.scanner.id
 
-    def test_constraint_blocks_reconciled_state_with_mismatch(self):
-        """AC #2: direct state write to reconciled with mismatched totals fails."""
+    def test_constraint_blocks_reconciled_without_review_note(self):
+        """A direct write to reconciled without a reviewer's note fails — the
+        review-note constraint replaces the old scan==physical match."""
         session = self._new_session()
         sections = self._start_and_get_sections(session)
         section = sections[0]
-        section.physical_total_qty = 99
         with self.assertRaises(ValidationError):
             section.state = "reconciled"
 
@@ -83,73 +87,49 @@ class TestSectionReconciliation(VivoCountCommon):
         self.assertEqual(section.locked_by_id, self.physical)
 
     def test_variance_reason_required_for_non_zero_difference(self):
-        """AC #11: a counted variance cannot reconcile without a reason.
-
-        The gate now lives at the section review step (pending_review ->
-        reconciled), so confirmation is blocked, not approval.
-        """
+        """AC #11: a counted line with a variance still needs a per-line reason
+        before the reviewer can reconcile (in addition to the review note)."""
         session = self._new_session()
-        sections = self._start_and_get_sections(session)
-        section = sections[0]
-        section.scanner_id = self.scanner.id
-        section.with_user(self.scanner).action_start_scanning()
-        # Create a line with a real variance (counted != system).
-        self.Line.create(
-            {
-                "section_id": section.id,
-                "product_id": self.product_a.id,
-                "system_qty": 10.0,
-                "counted_qty": 9.0,
-                "unit_cost": self.product_a.standard_price,
-            }
-        )
-        section.with_user(self.scanner).action_finish_scanning()
-        section.physical_counter_id = self.physical.id
-        section.with_user(self.physical).action_submit_physical_count(physical_qty=9)
-        # Match with a genuine variance -> held for auditor review.
+        section = self._approve_section_with_variance(session, counted=9.0, system=10.0)
         self.assertEqual(section.state, "pending_review")
+        # Even with a review note, the varied counted line needs a reason.
         with self.assertRaises(ValidationError):
-            section.action_confirm_reconcile()
+            section.with_user(self.store_manager).action_confirm_reconcile(
+                review_note="noted"
+            )
+        section.line_ids.filtered(lambda l: l.difference != 0).variance_reason = "miscount"
+        section.with_user(self.store_manager).action_confirm_reconcile(review_note="noted")
+        self.assertEqual(section.state, "reconciled")
+
+    def test_review_note_is_mandatory(self):
+        """The reviewer's variance note is mandatory to reconcile."""
+        session = self._new_session()
+        section = self._reconcile_target(session)
+        with self.assertRaises(ValidationError):
+            section.with_user(self.store_manager).action_confirm_reconcile()
+        section.with_user(self.store_manager).action_confirm_reconcile(review_note="ok")
+        self.assertEqual(section.state, "reconciled")
 
     def test_other_reason_requires_note(self):
         session = self._new_session()
-        sections = self._start_and_get_sections(session)
-        section = sections[0]
-        section.scanner_id = self.scanner.id
-        section.with_user(self.scanner).action_start_scanning()
-        line = self.Line.create(
-            {
-                "section_id": section.id,
-                "product_id": self.product_a.id,
-                "system_qty": 10.0,
-                "counted_qty": 9.0,
-                "unit_cost": self.product_a.standard_price,
-                "variance_reason": "other",
-            }
+        section = self._approve_section_with_variance(
+            session, counted=9.0, system=10.0, reason="other"
         )
-        section.with_user(self.scanner).action_finish_scanning()
-        section.physical_counter_id = self.physical.id
-        section.with_user(self.physical).action_submit_physical_count(physical_qty=9)
         self.assertEqual(section.state, "pending_review")
-        # 'Other' needs a free-text note before the section can reconcile.
+        # 'Other' needs a per-line free-text note before reconciling.
         with self.assertRaises(ValidationError):
-            section.action_confirm_reconcile()
-        line.variance_note = "explained"
-        section.action_confirm_reconcile()
+            section.with_user(self.store_manager).action_confirm_reconcile(
+                review_note="noted"
+            )
+        section.line_ids.filtered(lambda l: l.difference != 0).variance_note = "explained"
+        section.with_user(self.store_manager).action_confirm_reconcile(review_note="noted")
         self.assertEqual(section.state, "reconciled")
 
-    def test_rescan_count_tracks_loops(self):
-        # This test exercises multiple re-scan loops before resolving. Raise
-        # the escalation threshold so the loops are not diverted to auditor
-        # review (see test_section_review for the escalation behaviour itself).
-        self.env["ir.config_parameter"].sudo().set_param(
-            "vivo_count.rescan_review_threshold", "5"
-        )
+    def test_reject_loop_tracks_rescan_count(self):
+        """Repeated rejects increment rescan_count; a final approve reconciles."""
         session = self._new_session()
-        sections = self._start_and_get_sections(session)
-        section = sections[0]
+        section = self._start_and_get_sections(session)[0]
         section.scanner_id = self.scanner.id
-        # Loop 1
         section.with_user(self.scanner).action_start_scanning()
         self.Line.create(
             {
@@ -160,18 +140,43 @@ class TestSectionReconciliation(VivoCountCommon):
                 "unit_cost": self.product_a.standard_price,
             }
         )
+        # Reject twice.
         section.with_user(self.scanner).action_finish_scanning()
-        section.physical_counter_id = self.physical.id
-        section.with_user(self.physical).action_submit_physical_count(physical_qty=3)
+        section.with_user(self.physical).action_reject_scan()
         self.assertEqual(section.rescan_count, 1)
-        # Loop 2
-        section.with_user(self.scanner).action_start_scanning()
         section.with_user(self.scanner).action_finish_scanning()
-        section.with_user(self.physical).action_submit_physical_count(physical_qty=2)
+        section.with_user(self.physical).action_reject_scan()
         self.assertEqual(section.rescan_count, 2)
-        # Resolve
-        section.with_user(self.scanner).action_start_scanning()
+        # Resolve: approve + review.
         section.with_user(self.scanner).action_finish_scanning()
-        section.with_user(self.physical).action_submit_physical_count(physical_qty=5)
+        section.with_user(self.physical).action_approve_scan()
+        section.with_user(self.store_manager).action_confirm_reconcile(review_note="ok")
         self.assertEqual(section.state, "reconciled")
         self.assertEqual(section.rescan_count, 2)
+
+    # ------------------------------------------------------------------
+    # Local helpers for the approve-then-review flow
+    # ------------------------------------------------------------------
+    def _reconcile_target(self, session):
+        """A section scanned (no per-line variance) and approved, sitting in
+        pending_review ready for the reviewer."""
+        section = self._start_and_get_sections(session)[0]
+        return self._approve_section(section, self.scanner, self.physical, 5)
+
+    def _approve_section_with_variance(self, session, counted, system, reason=False):
+        section = self._start_and_get_sections(session)[0]
+        section.scanner_id = self.scanner.id
+        section.with_user(self.scanner).action_start_scanning()
+        vals = {
+            "section_id": section.id,
+            "product_id": self.product_a.id,
+            "system_qty": system,
+            "counted_qty": counted,
+            "unit_cost": self.product_a.standard_price,
+        }
+        if reason:
+            vals["variance_reason"] = reason
+        self.Line.create(vals)
+        section.with_user(self.scanner).action_finish_scanning()
+        section.with_user(self.physical).action_approve_scan()
+        return section

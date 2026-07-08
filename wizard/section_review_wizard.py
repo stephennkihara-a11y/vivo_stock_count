@@ -1,19 +1,14 @@
-from odoo import _, api, fields, models
+from odoo import fields, models
 
 
 class VivoCountSectionReviewWizard(models.TransientModel):
-    """Auditor review of a section held in `pending_review`.
+    """Manager/auditor review of a section held in `pending_review`.
 
-    Two cases converge here:
-    - scan == physical (a genuine per-line variance): the auditor captures
-      variance reasons on the counted lines and confirms.
-    - scan != physical (a persistent disagreement escalated after re-scans):
-      the counters could not agree, so the auditor sets an authoritative
-      physical count and records why before force-reconciling.
-
-    Confirmation runs the section's `action_confirm_reconcile`, which validates
-    reasons, transitions the section to `reconciled`, and stamps
-    `reconciled_by_id` for the audit trail.
+    Approve-then-review flow: the scanned result has already been approved by a
+    second person. The reviewer records a MANDATORY variance note and
+    reconciles. Confirmation runs the section's `action_confirm_reconcile`,
+    which enforces the manager/auditor band, requires the note, transitions the
+    section to `reconciled`, and stamps `reconciled_by_id`.
     """
 
     _name = "vivo.count.section.review.wizard"
@@ -23,51 +18,21 @@ class VivoCountSectionReviewWizard(models.TransientModel):
         "vivo.count.section", required=True, readonly=True, ondelete="cascade"
     )
     section_name = fields.Char(related="section_id.name", readonly=True)
-    scan_total_qty = fields.Float(
-        related="section_id.scan_total_qty", readonly=True
+    scan_total_qty = fields.Float(related="section_id.scan_total_qty", readonly=True)
+    review_note = fields.Text(
+        string="Variance note",
+        required=True,
+        help="Mandatory: record what the counts show and why you are "
+             "reconciling this section.",
     )
-    physical_total_qty = fields.Float(
-        related="section_id.physical_total_qty", readonly=True
-    )
-    is_mismatch = fields.Boolean(compute="_compute_is_mismatch")
-    # Auditor's authoritative headcount when the counters disagree (their
-    # number wins). Defaults to the physical counter's figure.
-    authoritative_qty = fields.Float(
-        string="Authoritative Physical Count",
-        compute="_compute_authoritative_qty",
-        store=True,
-        readonly=False,
-    )
-    force_reason = fields.Text(
-        string="Reason for auditor reconciliation",
-        help="Required when the scan and physical counts still disagree.",
-    )
-    # Editable so the auditor can capture variance reasons/notes on the real
-    # lines. The view filters this to the counted subset.
+    # Editable so the reviewer can capture per-line variance reasons/notes on
+    # the real lines. The view filters this to the counted subset.
     line_ids = fields.One2many(related="section_id.line_ids", readonly=False)
-
-    @api.depends("section_id.scan_total_qty", "section_id.physical_total_qty")
-    def _compute_is_mismatch(self):
-        for wiz in self:
-            wiz.is_mismatch = bool(wiz.section_id) and (
-                wiz.section_id.scan_total_qty != wiz.section_id.physical_total_qty
-            )
-
-    @api.depends("section_id.physical_total_qty")
-    def _compute_authoritative_qty(self):
-        for wiz in self:
-            wiz.authoritative_qty = wiz.section_id.physical_total_qty
 
     def action_confirm(self):
         self.ensure_one()
-        # Any reason/note edits made in the wizard are already written to the
-        # lines by the save that precedes this button call; confirm validates
-        # and reconciles.
-        if self.is_mismatch:
-            self.section_id.action_confirm_reconcile(
-                physical_qty=self.authoritative_qty,
-                force_reason=self.force_reason,
-            )
-        else:
-            self.section_id.action_confirm_reconcile()
+        # Any per-line reason/note edits are written by the save that precedes
+        # this button call; confirm validates the band, requires the note, and
+        # reconciles.
+        self.section_id.action_confirm_reconcile(review_note=self.review_note)
         return {"type": "ir.actions.act_window_close"}

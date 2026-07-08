@@ -120,14 +120,54 @@ class VivoCountCommon(TransactionCase):
         session.action_start()
         return session.section_ids
 
-    def _reconcile_section(self, section, scanner, physical, scan_qty, physical_qty=None):
-        if physical_qty is None:
-            physical_qty = scan_qty
+    def _reconcile_section(
+        self, section, scanner, physical, scan_qty, physical_qty=None, reviewer=None
+    ):
+        """Drive a section through the full approve-then-review flow to
+        reconciled: scanner scans -> finish -> a DIFFERENT person approves ->
+        a manager records a note and reconciles.
+
+        ``physical_qty`` is accepted for call-site compatibility but ignored —
+        the second person no longer keys an independent headcount. ``scanner``
+        and ``physical`` must be different users (segregation of duties);
+        ``physical`` is the approver. The reviewer defaults to the store
+        manager (a manager/auditor band is required to reconcile).
+        """
         section.scanner_id = scanner.id
         section.with_user(scanner).action_start_scanning()
-        # Seed a single line directly (mobile-app behaviour comes in Phase 3).
-        # system_qty == counted_qty, so there is no genuine variance and the
-        # section auto-reconciles on match (no pending_review).
+        # Seed a single line. system_qty == counted_qty, so there is no per-line
+        # variance to reason for; the section-level review note is still required.
+        self.Line.create(
+            {
+                "section_id": section.id,
+                "product_id": self.product_a.id,
+                "system_qty": scan_qty,
+                "counted_qty": scan_qty,
+                "unit_cost": self.product_a.standard_price,
+            }
+        )
+        section.with_user(scanner).action_finish_scanning()      # -> physical_review
+        section.with_user(physical).action_approve_scan()        # -> pending_review
+        (section.with_user(reviewer or self.store_manager)
+            .action_confirm_reconcile(review_note="counted and reviewed"))
+        return section
+
+    def _confirm_section_review(self, section, user=None, review_note="reviewed"):
+        """Reconcile a section sitting in Pending Review as a manager/auditor.
+
+        No-op if the section is not in pending_review. Runs as the given user,
+        or the store manager (a manager/auditor band is required).
+        """
+        if section.state == "pending_review":
+            (section.with_user(user or self.store_manager)
+                .action_confirm_reconcile(review_note=review_note))
+        return section
+
+    def _approve_section(self, section, scanner, approver, scan_qty):
+        """Scan + finish + second-person approve, leaving the section in
+        pending_review (no reconcile). Returns the section."""
+        section.scanner_id = scanner.id
+        section.with_user(scanner).action_start_scanning()
         self.Line.create(
             {
                 "section_id": section.id,
@@ -138,17 +178,5 @@ class VivoCountCommon(TransactionCase):
             }
         )
         section.with_user(scanner).action_finish_scanning()
-        section.physical_counter_id = physical.id
-        section.with_user(physical).action_submit_physical_count(physical_qty=physical_qty)
-        return section
-
-    def _confirm_section_review(self, section, user=None):
-        """Auditor-confirm a section that landed in Pending Review.
-
-        No-op if the section already auto-reconciled (zero variance). Runs as
-        the given user, or the current (admin) env when none is supplied.
-        """
-        if section.state == "pending_review":
-            target = section.with_user(user) if user else section
-            target.action_confirm_reconcile()
+        section.with_user(approver).action_approve_scan()
         return section

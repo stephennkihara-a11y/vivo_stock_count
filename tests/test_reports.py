@@ -31,11 +31,8 @@ class TestReports(VivoCountCommon):
             }
         )
         s0.with_user(self.scanner).action_finish_scanning()
-        s0.physical_counter_id = self.physical.id
-        s0.with_user(self.physical).action_submit_physical_count(physical_qty=counted)
-        # A genuine (system-baseline) variance routes to pending_review; the
-        # line carries a reason, so the auditor confirms.
-        self._confirm_section_review(s0)
+        s0.with_user(self.physical).action_approve_scan()
+        s0.with_user(self.store_manager).action_confirm_reconcile(review_note="reviewed")
         self._reconcile_section(sections[1], self.scanner, self.physical, 0, 0)
         session.action_submit_for_review()
         session.with_user(self.store_manager).action_approve()

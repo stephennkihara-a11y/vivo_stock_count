@@ -157,7 +157,7 @@ class TestPwaApi(VivoCountCommon):
     # ------------------------------------------------------------------
     # Physical submit + replay
     # ------------------------------------------------------------------
-    def test_physical_submit_replay_is_no_op(self):
+    def test_approve_replay_is_no_op(self):
         session = self._new_session()
         section = self._start_and_get_sections(session)[0]
         section.with_user(self.scanner).open_for_scanning()
@@ -171,19 +171,19 @@ class TestPwaApi(VivoCountCommon):
 
         first = (
             section.with_user(self.physical)
-            .submit_physical_pwa(physical_qty=5, idempotency_key="phys-1")
+            .approve_scan_pwa(idempotency_key="a-1")
         )
-        self.assertEqual(first["state"], "reconciled")
+        self.assertEqual(first["state"], "pending_review")
         replay = (
             section.with_user(self.physical)
-            .submit_physical_pwa(physical_qty=5, idempotency_key="phys-1")
+            .approve_scan_pwa(idempotency_key="a-1")
         )
         self.assertTrue(replay["idempotent"])
-        self.assertEqual(replay["state"], "reconciled")
+        self.assertEqual(replay["state"], "pending_review")
         # rescan_count not bumped by replay
         self.assertEqual(section.rescan_count, 0)
 
-    def test_physical_submit_mismatch_routes_to_rescan(self):
+    def test_reject_routes_back_to_scanning(self):
         session = self._new_session()
         section = self._start_and_get_sections(session)[0]
         section.with_user(self.scanner).open_for_scanning()
@@ -194,9 +194,6 @@ class TestPwaApi(VivoCountCommon):
             idempotency_key="m-scan",
         )
         section.with_user(self.scanner).finish_scanning_pwa()
-        r = (
-            section.with_user(self.physical)
-            .submit_physical_pwa(physical_qty=4, idempotency_key="phys-mm")
-        )
-        self.assertEqual(r["state"], "variance_rescan")
+        r = section.with_user(self.physical).reject_scan_pwa()
+        self.assertEqual(r["state"], "scanning")
         self.assertEqual(section.rescan_count, 1)

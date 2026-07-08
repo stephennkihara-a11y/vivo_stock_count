@@ -55,8 +55,8 @@ class TestCountedSplit(VivoCountCommon):
         self._line(section, self.product_a, 5.0, 5.0)
         self._line(section, self.product_b, 2.0, 0.0)
         section.with_user(self.scanner).action_finish_scanning()
-        section.physical_counter_id = self.physical.id
-        section.with_user(self.physical).action_submit_physical_count(physical_qty=5)
+        section.with_user(self.physical).action_approve_scan()
+        section.with_user(self.store_manager).action_confirm_reconcile(review_note="reviewed")
         self.assertEqual(section.state, "reconciled")
 
         # Reconcile the remaining section so the session can advance.
@@ -79,8 +79,8 @@ class TestCountedSplit(VivoCountCommon):
         self._line(section, self.product_a, 5.0, 5.0)   # counted somewhere
         self._line(section, self.product_b, 2.0, 0.0)   # counted nowhere
         section.with_user(self.scanner).action_finish_scanning()
-        section.physical_counter_id = self.physical.id
-        section.with_user(self.physical).action_submit_physical_count(physical_qty=5)
+        section.with_user(self.physical).action_approve_scan()
+        section.with_user(self.store_manager).action_confirm_reconcile(review_note="reviewed")
 
         self.assertEqual(session.uncounted_sku_count, 1)
         self.assertEqual(
@@ -101,25 +101,17 @@ class TestCountedSplit(VivoCountCommon):
         rack_a.scanner_id = self.scanner.id
         rack_a.with_user(self.scanner).action_start_scanning()
         self._line(rack_a, self.product_b, 3.0, 0.0)
-        rack_a.with_user(self.scanner).action_finish_scanning()
-        rack_a.physical_counter_id = self.physical.id
-        rack_a.with_user(self.physical).action_submit_physical_count(physical_qty=0)
+        # The rollup is computed over the session's lines regardless of section
+        # state, so no reconcile is needed to assert it.
         self.assertEqual(session.uncounted_sku_count, 1)
         # Rack B: product_b is actually scanned here.
         rack_b.scanner_id = self.scanner.id
         rack_b.with_user(self.scanner).action_start_scanning()
         self._line(rack_b, self.product_b, 0.0, 3.0)
-        rack_b.with_user(self.scanner).action_finish_scanning()
-        rack_b.physical_counter_id = self.physical.id
-        rack_b.with_user(self.physical).action_submit_physical_count(physical_qty=3)
         self.assertEqual(session.uncounted_sku_count, 0)
 
     def test_desktop_reconcile_without_pwa(self):
-        """Scanning -> Physical Count -> Reconciled entirely on desktop.
-
-        The desktop 'Submit Physical Count' button calls the action with no
-        argument, relying on the physical_total_qty field typed on the form.
-        """
+        """Scanning -> Physical Review -> Pending Review -> Reconciled on desktop."""
         session = self._new_session()
         sections = self._start_and_get_sections(session)
         section = sections[0]
@@ -128,12 +120,12 @@ class TestCountedSplit(VivoCountCommon):
         self.assertEqual(section.state, "scanning")
         self._line(section, self.product_a, 6.0, 6.0)
         section.with_user(self.scanner).action_finish_scanning()
-        self.assertEqual(section.state, "physical_count")
-        # Physical counter types the headcount into the desktop field...
-        section.physical_counter_id = self.physical.id
-        section.with_user(self.physical).physical_total_qty = 6.0
-        # ...then clicks Submit Physical Count (no qty passed).
-        section.with_user(self.physical).action_submit_physical_count()
+        self.assertEqual(section.state, "physical_review")
+        # A different second person approves the scanned result...
+        section.with_user(self.physical).action_approve_scan()
+        self.assertEqual(section.state, "pending_review")
+        # ...then a manager records a note and reconciles.
+        section.with_user(self.store_manager).action_confirm_reconcile(review_note="counted")
         self.assertEqual(section.state, "reconciled")
         self.assertTrue(section.is_reconciled)
 
@@ -151,8 +143,8 @@ class TestCountedSplit(VivoCountCommon):
         # Counted 4 but system says 5 — a real rack-level shortfall.
         self._line(section, self.product_a, 5.0, 4.0)
         section.with_user(self.scanner).action_finish_scanning()
-        section.physical_counter_id = self.physical.id
-        section.with_user(self.physical).action_submit_physical_count(physical_qty=4)
+        section.with_user(self.physical).action_approve_scan()
         self.assertEqual(section.state, "pending_review")
+        # A review note alone is not enough — the varied line needs a reason.
         with self.assertRaises(ValidationError):
-            section.action_confirm_reconcile()
+            section.with_user(self.store_manager).action_confirm_reconcile(review_note="noted")

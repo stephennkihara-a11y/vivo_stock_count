@@ -35,13 +35,8 @@ class TestGlPosting(VivoCountCommon):
             }
         )
         s0.with_user(self.scanner).action_finish_scanning()
-        s0.physical_counter_id = self.physical.id
-        s0.with_user(self.physical).action_submit_physical_count(
-            physical_qty=counted_qty
-        )
-        # A variance routes to pending_review; the line has a reason, so the
-        # auditor confirms. Zero-variance counts auto-reconcile (no-op here).
-        self._confirm_section_review(s0)
+        s0.with_user(self.physical).action_approve_scan()
+        s0.with_user(self.store_manager).action_confirm_reconcile(review_note="reviewed")
         # Reconcile the second section trivially.
         self._reconcile_section(sections[1], self.scanner, self.physical, 0, 0)
         # The store manager reviews (becomes reviewer_id) and approves, so the
@@ -133,8 +128,8 @@ class TestGlPosting(VivoCountCommon):
             }
         )
         s0.with_user(self.scanner).action_finish_scanning()
-        s0.physical_counter_id = self.physical.id
-        s0.with_user(self.physical).action_submit_physical_count(physical_qty=0)
+        s0.with_user(self.physical).action_approve_scan()
+        s0.with_user(self.store_manager).action_confirm_reconcile(review_note="reviewed")
         # Sections 1 + 2: counted lines, system=0, counted=4 and 5
         for sec, qty in [(s1, 4.0), (s2, 5.0)]:
             sec.scanner_id = self.scanner.id
@@ -150,10 +145,8 @@ class TestGlPosting(VivoCountCommon):
                 }
             )
             sec.with_user(self.scanner).action_finish_scanning()
-            sec.physical_counter_id = self.physical.id
-            sec.with_user(self.physical).action_submit_physical_count(
-                physical_qty=qty
-            )
+            sec.with_user(self.physical).action_approve_scan()
+            sec.with_user(self.store_manager).action_confirm_reconcile(review_note="reviewed")
         session.action_submit_for_review()
         session.with_user(self.store_manager).action_approve()
         session.with_user(self.store_manager).action_apply()

@@ -82,9 +82,8 @@ class TestReviewUI(VivoCountCommon):
             }
         )
         s.with_user(self.scanner).action_finish_scanning()
-        s.physical_counter_id = self.physical.id
-        s.with_user(self.physical).action_submit_physical_count(physical_qty=9)
-        self._confirm_section_review(s)
+        s.with_user(self.physical).action_approve_scan()
+        s.with_user(self.store_manager).action_confirm_reconcile(review_note="reviewed")
         session.invalidate_recordset()
         self.assertEqual(session.variance_line_count, 1)
         self.assertEqual(session.sections_with_variance, 1)
@@ -112,10 +111,8 @@ class TestReviewUI(VivoCountCommon):
                 }
             )
             s.with_user(self.scanner).action_finish_scanning()
-            s.physical_counter_id = self.physical.id
-            s.with_user(self.physical).action_submit_physical_count(physical_qty=9)
-            # Variance -> pending_review; line has a reason, so confirm it.
-            self._confirm_section_review(s)
+            s.with_user(self.physical).action_approve_scan()
+            s.with_user(self.store_manager).action_confirm_reconcile(review_note="reviewed")
         else:
             self._reconcile_section(sections[1], self.scanner, self.physical, 5)
         session.action_submit_for_review()
@@ -161,8 +158,8 @@ class TestReviewUI(VivoCountCommon):
             }
         )
         s.with_user(self.scanner).action_finish_scanning()
-        s.physical_counter_id = self.physical.id
-        s.with_user(self.physical).action_submit_physical_count(physical_qty=0)
+        s.with_user(self.physical).action_approve_scan()
+        s.with_user(self.store_manager).action_confirm_reconcile(review_note="reviewed")
         session.action_submit_for_review()
 
         wiz = (

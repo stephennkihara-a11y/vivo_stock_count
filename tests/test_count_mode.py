@@ -96,21 +96,23 @@ class TestCountMode(VivoCountCommon):
         self.assertEqual(line.system_qty, 0.0)
         self.assertTrue(line.is_unexpected)
 
-    def test_mismatch_escalates_to_pending_review_in_quick_mode(self):
-        """The scan/physical auditor path is mode-independent."""
+    def test_approve_reject_flow_is_mode_independent(self):
+        """The approve-then-review flow works the same in quick-count mode."""
         self._seed_onhand(self.product_a, 5)
         session = self._quick_session_started()
         section = self._open_section(session)
-        self._scan(section, self.product_a, 5, "k1")  # scan_total 5, system 5 (no per-line variance)
+        self._scan(section, self.product_a, 5, "k1")
         section.with_user(self.scanner).action_finish_scanning()
-        section.physical_counter_id = self.physical.id
-        section.with_user(self.physical).action_submit_physical_count(physical_qty=3)
-        self.assertEqual(section.state, "variance_rescan")
-        # Re-scan, still disagree -> escalate (default threshold 1).
-        section.with_user(self.scanner).action_start_scanning()
+        self.assertEqual(section.state, "physical_review")
+        # Second person rejects -> back to scanning.
+        section.with_user(self.physical).action_reject_scan()
+        self.assertEqual(section.state, "scanning")
+        self.assertEqual(section.rescan_count, 1)
+        # Retry: finish, approve, review.
         section.with_user(self.scanner).action_finish_scanning()
-        section.with_user(self.physical).action_submit_physical_count(physical_qty=3)
-        self.assertEqual(section.state, "pending_review")
+        section.with_user(self.physical).action_approve_scan()
+        section.with_user(self.store_manager).action_confirm_reconcile(review_note="ok")
+        self.assertEqual(section.state, "reconciled")
 
     def test_uncounted_rollup_is_na_in_quick_mode(self):
         self._seed_onhand(self.product_a, 10)

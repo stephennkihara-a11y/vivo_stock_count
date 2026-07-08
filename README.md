@@ -69,53 +69,46 @@ vivo.count.zone ─┬─< vivo.count.section.template       (store map, reused 
 **Session:** `draft → in_progress → counted → review → approved → applied`
 (cancellable from any non-applied state).
 
-**Section:** `draft → scanning → physical_count → pending_review → reconciled`,
-with a `variance_rescan → scanning` loop on every scan-vs-physical mismatch.
+**Section (approve-then-review):**
+`draft → scanning → physical_review → pending_review → reconciled`.
 
-The full path is driven from the desktop section form:
+Vivo uses an approve-then-review flow rather than an independent dual count:
+the scanner scans; a **different** second person **approves** the scanned
+result (they do not re-count); then a manager/auditor reviews, records a note,
+and reconciles.
 
-- **Start Scanning** (`draft`/`variance_rescan` → `scanning`)
-- **Finish Scanning** (`scanning` → `physical_count`)
-- type the physical counter's headcount into **Physical Count**, then
-  **Submit Physical Count** — on a match the section moves to
-  `pending_review`; on a mismatch it loops to `variance_rescan`
-- **Review & Reconcile** (`pending_review` → `reconciled`) opens an auditor
-  wizard listing the counted lines. The auditor must give a variance reason
-  (and a note for reason *Other*) for every counted line that differs from the
-  system before confirming. Confirmation stamps `reconciled_by_id` and
-  `reconciled_at` for the audit trail. Confirmation is **manager-gated**
-  (`group_vivo_count_store_manager` or higher) — a plain counter can never
-  reconcile a section.
+- **Start Scanning** (`draft` → `scanning`)
+- **Finish Scanning** (`scanning` → `physical_review`)
+- **Approve** (`physical_review` → `pending_review`) — done by a second person
+  who must differ from the scanner (segregation of duties). **Reject**
+  (`physical_review` → `scanning`) sends it back for a re-scan and increments
+  `rescan_count`.
+- **Review & Reconcile** (`pending_review` → `reconciled`) — a manager/auditor
+  records a **mandatory variance note** and reconciles. Every counted line that
+  differs from a real system baseline still needs a per-line variance reason
+  (and a note for reason *Other*). `reconciled_by_id`, `reconciled_at` and the
+  `review_note` are captured for the audit trail.
 
-**Persistent mismatch → auditor.** A scan-vs-physical mismatch loops through
-`variance_rescan` for re-scanning, but it must not loop forever. After
-`vivo_count.rescan_review_threshold` failed re-scans (default 1) the section
-escalates to `pending_review` for the auditor instead of looping. In the
-wizard the auditor sets an **authoritative physical count** (the counters
-couldn't agree, so the auditor's number wins) and records a mandatory reason;
-the section then reconciles even though the totals differ (`force_reconciled`,
-`force_reconcile_reason`, `reconciled_by_id` all captured). This is the only
-way a section with `scan_total_qty != physical_total_qty` may become
-`reconciled`.
+Reconciliation is **manager-gated** — only `group_vivo_count_store_manager`,
+`group_vivo_count_regional` or `group_vivo_count_cfoo_audit` may confirm. The
+gate is enforced in `action_confirm_reconcile` **and** at the `write()` layer
+(setting `state = reconciled`, or the `force_reconciled` /
+`force_reconcile_reason` fields, requires the band), so a plain counter cannot
+reconcile or override even by a raw ORM write. The integrity gate for
+reconciliation is the recorded review note (`_check_reconcile_requires_note`) —
+there is no independent physical count to match.
 
-**Auto-close.** A section with no *genuine* variance skips `pending_review` and
-reconciles automatically on match (no `reconciled_by_id`), controlled by the
-**Auto-close zero-variance sections** setting
-(`vivo_count.auto_close_zero_variance`, default on). A "genuine variance" is a
-counted line with a real system baseline (`system_qty` set) that differs from
-the count. Pure rack scans from the mobile PWA carry `system_qty = 0` (the
-snapshot lives in the catch-all section), so they are not section-level
-variances — their reconciliation against the system happens per-product at
-Apply. Turn the toggle off to route **every** matched section through auditor
-review.
+The same transitions are exposed to the mobile PWA (`finish_scanning_pwa`,
+`approve_scan_pwa`, `reject_scan_pwa`).
 
-The same transitions are exposed to the mobile PWA.
+A session cannot reach `counted` (and therefore `review` / `approved` /
+`applied`) while any section is unreconciled — `pending_review` and
+`physical_review` both count as unreconciled, so a section awaiting approval or
+sign-off blocks the session from advancing.
 
-A session cannot reach `counted` (and therefore `review` / `approved` / `applied`)
-while any section is unreconciled — `pending_review` counts as unreconciled,
-so a section awaiting sign-off blocks the session from advancing. Enforced both
-by state guards on the action methods and by a `@api.constrains` invariant that
-prevents direct writes.
+> The legacy independent-dual-count states (`physical_count`, `variance_rescan`)
+> and the force-reconcile override remain in the model for data compatibility
+> and are not entered by the new flow.
 
 ## Counting modes
 

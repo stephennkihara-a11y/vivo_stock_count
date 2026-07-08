@@ -14,8 +14,7 @@
                 <field name="physical_counter_id"/>
                 <filter name="state_draft" string="Not Started" domain="[('state','=','draft')]"/>
                 <filter name="state_scanning" string="Scanning" domain="[('state','=','scanning')]"/>
-                <filter name="state_physical" string="Physical Count" domain="[('state','=','physical_count')]"/>
-                <filter name="state_variance" string="Variance Re-scan" domain="[('state','=','variance_rescan')]"/>
+                <filter name="state_physical_review" string="Physical Review" domain="[('state','=','physical_review')]"/>
                 <filter name="state_pending" string="Pending Review" domain="[('state','=','pending_review')]"/>
                 <filter name="state_reconciled" string="Reconciled" domain="[('state','=','reconciled')]"/>
                 <separator/>
@@ -88,7 +87,7 @@
         <field name="name">vivo.count.section.list</field>
         <field name="model">vivo.count.section</field>
         <field name="arch" type="xml">
-            <list string="Sections" decoration-success="state == 'reconciled'" decoration-warning="state in ('scanning','physical_count')" decoration-info="state == 'pending_review'" decoration-danger="state == 'variance_rescan'" decoration-muted="state == 'draft'">
+            <list string="Sections" decoration-success="state == 'reconciled'" decoration-warning="state in ('scanning','physical_review')" decoration-info="state == 'pending_review'" decoration-muted="state == 'draft'">
                 <field name="session_id"/>
                 <field name="zone_id"/>
                 <field name="name"/>
@@ -110,21 +109,22 @@
         <field name="arch" type="xml">
             <form string="Section">
                 <header>
-                    <button name="action_start_scanning" type="object" string="Start Scanning" class="btn-primary" invisible="state not in ('draft','variance_rescan')"/>
+                    <button name="action_start_scanning" type="object" string="Start Scanning" class="btn-primary" invisible="state != 'draft'"/>
                     <button name="action_finish_scanning" type="object" string="Finish Scanning" class="btn-primary" invisible="state != 'scanning'"/>
-                    <button name="action_submit_physical_count" type="object" string="Submit Physical Count" class="btn-primary" invisible="state != 'physical_count'"/>
+                    <button name="action_approve_scan" type="object" string="Approve" class="btn-primary" invisible="state != 'physical_review'"/>
+                    <button name="action_reject_scan" type="object" string="Reject (re-scan)" invisible="state != 'physical_review'"/>
                     <button name="action_open_section_review_wizard" type="object" string="Review &amp; Reconcile" class="btn-primary" invisible="state != 'pending_review'"/>
-                    <field name="state" widget="statusbar" statusbar_visible="draft,scanning,physical_count,pending_review,reconciled"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,scanning,physical_review,pending_review,reconciled"/>
                 </header>
                 <sheet>
                     <div class="alert alert-info" role="status" invisible="state == 'reconciled'">
-                        Workflow: <strong>Draft → Scanning → Physical Count → Pending Review → Reconciled</strong>
-                        (or → Variance Re-scan if totals disagree). Enter the physical
-                        counter's headcount in <strong>Physical Count</strong>, then
-                        <strong>Submit Physical Count</strong>. On a match the section
-                        moves to <strong>Pending Review</strong> for auditor sign-off via
-                        <strong>Review &amp; Reconcile</strong>; sections with no genuine
-                        variance reconcile automatically (configurable).
+                        Workflow: <strong>Draft → Scanning → Physical Review → Pending Review → Reconciled</strong>.
+                        The scanner scans and clicks <strong>Finish Scanning</strong>. A
+                        <strong>different</strong> second person then <strong>Approves</strong>
+                        the scanned result (or <strong>Rejects</strong> it back to scanning).
+                        On approval the section moves to <strong>Pending Review</strong>, where
+                        a manager/auditor records a variance note via
+                        <strong>Review &amp; Reconcile</strong> and reconciles.
                     </div>
                     <group>
                         <group>
@@ -141,6 +141,7 @@
                             <field name="rescan_count"/>
                             <field name="reconciled_at"/>
                             <field name="reconciled_by_id"/>
+                            <field name="review_note" invisible="not review_note"/>
                             <field name="force_reconciled" invisible="not force_reconciled"/>
                             <field name="force_reconcile_reason" invisible="not force_reconciled"/>
                             <field name="locked_by_id"/>
