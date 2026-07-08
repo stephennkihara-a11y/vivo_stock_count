@@ -268,30 +268,57 @@ async function renderScanner() {
 }
 
 async function handleScan(barcode) {
+    const $last = $main.querySelector('#last-scan');
     const product = await resolveBarcode(barcode);
     if (!product) {
-        const $last = $main.querySelector('#last-scan');
         if ($last) $last.innerHTML = `<div class="warn">No SKU found for ${barcode}</div>`;
+        focusBarcode();
         return;
     }
-    // Scan-once-then-type-qty (AC #6). Default 1; user can edit and re-tap.
-    const qty = Number(prompt(`Quantity for ${product.name}?`, '1'));
-    if (!qty || qty <= 0) return;
+    // Continuous scanning (Odoo Barcode-app feel): every scan is quantity 1 and
+    // submits immediately — no popup — so the operator can scan-scan-scan
+    // without interruption. Bulk adjustments use the per-row +/- stepper that
+    // appears on the line, which never blocks the next scan.
+    const name = product.name || product.product_name || 'SKU';
     const r = await api.scan({
         section_id: state.section.id,
         product_id: product.product_id || product.id,
-        scanned_qty: qty,
+        scanned_qty: 1,
+        device_id: deviceId,
+    });
+    if ($last) {
+        if (r.queued) {
+            $last.innerHTML = `<div class="ok queued">Queued offline: ${name} ×1</div>`;
+        } else if (r.error) {
+            $last.innerHTML = `<div class="warn">${r.error}</div>`;
+        } else {
+            $last.innerHTML = `<div class="ok">${name} → scanned ${r.counted_qty}</div>`;
+        }
+    }
+    await refreshLines();
+    focusBarcode();
+}
+
+// Manual bulk adjustment on an existing row (the rare "we have six of these"
+// case). Sends a +/- delta through the same idempotent scan API and never
+// blocks scanning. Decrements are recorded as correction scan events, keeping
+// the audit trail intact.
+async function adjustLine(line, delta) {
+    const r = await api.scan({
+        section_id: state.section.id,
+        product_id: line.product_id,
+        scanned_qty: delta,
         device_id: deviceId,
     });
     const $last = $main.querySelector('#last-scan');
-    if (r.queued) {
-        $last.innerHTML = `<div class="ok queued">Queued offline: ${product.name} × ${qty}</div>`;
-    } else if (r.error) {
-        $last.innerHTML = `<div class="warn">${r.error}</div>`;
-    } else {
-        $last.innerHTML = `<div class="ok">${product.name} → total ${r.counted_qty}</div>`;
-    }
+    if ($last && r && r.error) $last.innerHTML = `<div class="warn">${r.error}</div>`;
     await refreshLines();
+    focusBarcode();
+}
+
+function focusBarcode() {
+    const $bc = $main.querySelector('#barcode-input');
+    if ($bc) $bc.focus();
 }
 
 async function resolveBarcode(barcode) {
@@ -318,14 +345,34 @@ async function refreshLines() {
     let total = 0;
     for (const l of lines) {
         total += l.counted_qty;
+        // "Unexpected / overage": scanned but nothing on the system for this
+        // SKU. Matches the backend's is_unexpected definition (on-hand 0). In
+        // Quick Count mode system_qty is the live on-hand, so this is exact;
+        // see the note in the section-lines API if surfacing it elsewhere.
+        const hasSystem = l.system_qty !== null && l.system_qty !== undefined;
+        const sysDisplay = hasSystem ? l.system_qty : '—';
+        const unexpected = (!hasSystem || l.system_qty === 0) && l.counted_qty > 0;
         const row = el(`
-            <div class="row compact">
+            <div class="row compact scan-row${unexpected ? ' unexpected' : ''}">
                 <div class="col">
-                    <strong>${l.product_name}</strong>
+                    <strong>${l.product_name}${
+            unexpected ? ' <span class="badge overage">overage</span>' : ''
+        }</strong>
                     <small>${l.barcode || ''}</small>
                 </div>
-                <span class="qty">${l.counted_qty}</span>
+                <div class="scan-metrics">
+                    <span class="metric"><label>System</label><b>${sysDisplay}</b></span>
+                    <span class="metric"><label>Scanned</label><b class="scanned">${l.counted_qty}</b></span>
+                    <span class="stepper">
+                        <button type="button" class="step minus" aria-label="Decrease ${l.product_name}"${
+            l.counted_qty <= 0 ? ' disabled' : ''
+        }>−</button>
+                        <button type="button" class="step plus" aria-label="Increase ${l.product_name}">+</button>
+                    </span>
+                </div>
             </div>`);
+        row.querySelector('.minus').addEventListener('click', () => adjustLine(l, -1));
+        row.querySelector('.plus').addEventListener('click', () => adjustLine(l, 1));
         $list.appendChild(row);
     }
     const $t = $main.querySelector('#scan-total');
