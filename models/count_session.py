@@ -1,4 +1,4 @@
-from odoo import _, api, fields, models
+from odoo import _, SUPERUSER_ID, api, fields, models
 from odoo.exceptions import AccessError, UserError, ValidationError
 
 
@@ -111,7 +111,7 @@ class VivoCountSession(models.Model):
     # whole store in one pass. These drive the reconcile threshold + summary.
     sections_approved = fields.Integer(
         compute="_compute_section_counts", store=True,
-        help="Racks approved by the second person and awaiting store reconcile.",
+        help="Racks the scanner has finished and that await store reconcile.",
     )
     sections_excluded = fields.Integer(
         compute="_compute_section_counts", store=True,
@@ -554,46 +554,49 @@ class VivoCountSession(models.Model):
         return max(0, min(100, pct))
 
     def _store_reconcile_readiness(self):
-        """(ready_pct, approved_racks, outstanding_racks) for the approved
+        """(ready_pct, ready_racks, outstanding_racks) for the readiness
         threshold shared by Submit-for-Review and the store reconcile.
 
-        A rack is READY once a second person has approved its scan
-        (`pending_review`), or it is already reconciled/excluded. Outstanding =
-        racks nobody has approved yet (draft/scanning/physical_review). The
-        percentage is measured against total racks."""
+        Two-party flow: a rack is READY once the scanner has finished scanning
+        it (`pending_review`) — there is no separate approval — or it is already
+        reconciled/excluded. Outstanding = racks the scanner has not finished
+        (draft/scanning; physical_review kept for legacy safety). The percentage
+        is measured against total racks."""
         self.ensure_one()
         sections = self.section_ids
-        approved = sections.filtered(lambda s: s.state == "pending_review")
+        ready = sections.filtered(lambda s: s.state == "pending_review")
         outstanding = sections.filtered(
             lambda s: s.state in ("draft", "scanning", "physical_review")
         )
         total = len(sections)
         ready_pct = 100.0 * (total - len(outstanding)) / total if total else 0.0
-        return ready_pct, approved, outstanding
+        return ready_pct, ready, outstanding
 
     def action_reconcile_session(self, review_note=None):
         """Reconcile the WHOLE store in one pass — replaces per-rack reconcile.
 
-        Racks are counted (scanning) and approved (a second person approves the
-        scan) per rack as before, leaving each "approved, awaiting store
-        reconcile" (`pending_review`). The auditor then runs THIS once for the
-        whole store instead of reconciling ~30 racks individually.
+        Two-party flow: the scanner scans and FINISHES each rack, leaving it
+        "scanned, awaiting store reconcile" (`pending_review`) — there is no
+        separate approver. A different auditor then runs THIS once for the whole
+        store instead of reconciling ~30 racks individually.
 
-        Order: Submit-for-Review is the counters' handoff and comes FIRST — it
-        moves the session to `review` on the approved threshold. The auditor then
-        runs this reconcile IN `review` (it also still runs from in_progress /
-        counted for flexibility). Available once at least
-        `store_reconcile_min_approved_pct` percent of the racks are approved
+        Order: Submit-for-Review is the scanner's handoff and comes FIRST — it
+        moves the session to `review` on the readiness threshold. The auditor
+        then runs this reconcile IN `review` (it also still runs from
+        in_progress / counted for flexibility). Available once at least
+        `store_reconcile_min_approved_pct` percent of the racks are scanned/ready
         (default 100); below that it is blocked with the outstanding racks named.
-        Racks not approved at reconcile time are EXCLUDED (left out and flagged)
+        Racks not finished at reconcile time are EXCLUDED (left out and flagged)
         rather than blocking the close.
 
-        On confirm, in one transaction: a manager/auditor band is required; every
-        approved rack passes the per-line variance-reason gate, is reconciled and
-        stamped with `reconciled_by_id`; outstanding racks are marked `excluded`.
-        The session stays in `review` (or auto-advances to `counted` if reconcile
-        was run pre-submit) so the existing Approve -> Post-to-Inventory chain
-        (and GL posting) runs unchanged.
+        Two-party SoD: the auditor running this must NOT be the session's
+        scanner. On confirm, in one transaction: scanner!=auditor is enforced and
+        a manager/auditor band is required; every ready rack passes the per-line
+        variance-reason gate, is reconciled and stamped with `reconciled_by_id`;
+        outstanding racks are marked `excluded`. The session stays in `review`
+        (or auto-advances to `counted` if reconcile was run pre-submit) so the
+        existing Approve -> Post-to-Inventory chain (and GL posting) runs
+        unchanged.
         """
         self._ensure_state({"in_progress", "counted", "review"})
         for session in self:
@@ -603,13 +606,13 @@ class VivoCountSession(models.Model):
                     _("Session %s has no racks to reconcile.") % session.name
                 )
             min_pct = session._store_reconcile_min_approved_pct()
-            ready_pct, approved, outstanding = session._store_reconcile_readiness()
+            ready_pct, ready, outstanding = session._store_reconcile_readiness()
             if ready_pct < min_pct:
                 raise UserError(
                     _(
                         "Store reconcile needs at least %(min)s%% of racks "
-                        "approved (only %(pct).0f%% are ready). These racks are "
-                        "not yet approved: %(racks)s"
+                        "scanned (only %(pct).0f%% are ready). These racks are "
+                        "not yet finished: %(racks)s"
                     )
                     % {
                         "min": min_pct,
@@ -617,35 +620,38 @@ class VivoCountSession(models.Model):
                         "racks": ", ".join(outstanding.mapped("name")),
                     }
                 )
-            if not approved:
+            if not ready:
                 raise UserError(
-                    _("No approved racks to reconcile in session %s.") % session.name
+                    _("No scanned racks to reconcile in session %s.") % session.name
                 )
             note = review_note
             if not note:
                 raise ValidationError(
                     _("A store-level variance/review note is required to reconcile.")
                 )
+            # Two-party SoD: the auditor reconciling cannot be the scanner.
+            session._check_reviewer_not_scanner()
             # Manager/auditor band — one check for the whole store (re-enforced
             # per rack on the `reconciled` write).
             self.env["vivo.count.section"]._check_auditor_band()
-            # Reconcile every approved rack (per-line variance-reason gate runs
+            # Reconcile every ready rack (per-line variance-reason gate runs
             # inside), then flag the rest as left out — all in this transaction.
-            approved._reconcile_sections(review_note=note, reconciled_by=self.env.user)
+            ready._reconcile_sections(review_note=note, reconciled_by=self.env.user)
             if outstanding:
                 outstanding.write({"state": "excluded"})
             session._maybe_auto_advance_to_counted()
         return True
 
     def action_submit_for_review(self):
-        """in_progress -> review: the counters' HANDOFF to the auditor.
+        """in_progress -> review: the scanner's HANDOFF to the auditor.
 
-        Submit-for-Review comes BEFORE reconciliation. It requires the racks to
-        be APPROVED (a second person approved each scan) to the configured
-        `store_reconcile_min_approved_pct` threshold — NOT reconciled. The
-        auditor reconciles the whole store afterwards from `review`
-        (`action_reconcile_session`). Below the approved threshold, submit is
-        blocked with the not-yet-approved racks named.
+        Two-party flow: Submit-for-Review comes BEFORE reconciliation. It
+        requires the racks to be SCANNED/finished to the configured
+        `store_reconcile_min_approved_pct` threshold — NOT approved by a second
+        person (there is none) and NOT reconciled. A different auditor
+        reconciles the whole store afterwards from `review`
+        (`action_reconcile_session`). Below the threshold, submit is blocked with
+        the unfinished racks named.
 
         Reviewer is auto-set to the user clicking the button so the audit trail
         records who performed the handoff; manual override remains on the form.
@@ -657,13 +663,13 @@ class VivoCountSession(models.Model):
                     _("Session %s has no racks to submit for review.") % session.name
                 )
             min_pct = session._store_reconcile_min_approved_pct()
-            ready_pct, _approved, outstanding = session._store_reconcile_readiness()
+            ready_pct, _ready, outstanding = session._store_reconcile_readiness()
             if ready_pct < min_pct:
                 raise UserError(
                     _(
                         "Cannot submit for review — only %(pct).0f%% of racks are "
-                        "approved (need %(min)s%%). These racks are not yet "
-                        "approved: %(racks)s"
+                        "scanned (need %(min)s%%). These racks are not yet "
+                        "finished: %(racks)s"
                     )
                     % {
                         "pct": ready_pct,
@@ -731,7 +737,7 @@ class VivoCountSession(models.Model):
         for session in self:
             session._check_variance_reasons()
             session._check_approver_authority()
-            session._check_counter_not_approver()
+            session._check_reviewer_not_scanner()
             session.write(
                 {
                     "state": "approved",
@@ -769,16 +775,24 @@ class VivoCountSession(models.Model):
                     % self.variance_value
                 )
 
-    def _check_counter_not_approver(self):
-        """SoD: a user who counted in a section cannot approve the session."""
+    def _check_reviewer_not_scanner(self):
+        """Two-party segregation of duties (the sole remaining SoD control).
+
+        The auditor who reviews, reconciles and applies a session must be a
+        DIFFERENT person than the scanner who counted it — no one signs off
+        their own count. The per-rack second-person approver is removed, so this
+        session-level scanner!=auditor rule is what keeps the two parties apart.
+        Enforced at store reconcile, session approve, and apply. Superuser
+        bypasses (setup / automation)."""
         self.ensure_one()
-        user = self.env.user
-        section_counters = self.section_ids.mapped("scanner_id") | self.section_ids.mapped(
-            "physical_counter_id"
-        )
-        if user in section_counters:
+        if self.env.uid == SUPERUSER_ID:
+            return
+        if self.env.user in self.section_ids.mapped("scanner_id"):
             raise UserError(
-                _("You cannot approve a session in which you scanned or counted.")
+                _(
+                    "You scanned on this session — a different auditor must "
+                    "review, reconcile and apply it."
+                )
             )
 
     def action_apply(self):
@@ -805,6 +819,8 @@ class VivoCountSession(models.Model):
             ):
                 # AC #1: counters can never apply.
                 raise AccessError(_("Counters cannot post stock counts to the GL."))
+            # Two-party SoD: the person applying cannot be the scanner.
+            session._check_reviewer_not_scanner()
             session._check_approver_authority()
             # Single savepoint wraps GL writes + reconciliation generation
             # + state transition (A7). On any exception, all three roll

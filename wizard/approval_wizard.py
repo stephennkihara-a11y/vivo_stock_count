@@ -112,14 +112,12 @@ class VivoCountApprovalWizard(models.TransientModel):
                 )
             wiz.band_authority_ok = band_ok
 
-            # SoD
-            counters = session.section_ids.mapped(
-                "scanner_id"
-            ) | session.section_ids.mapped("physical_counter_id")
-            sod_ok = user not in counters
+            # Two-party SoD: the auditor approving must not be the scanner.
+            scanners = session.section_ids.mapped("scanner_id")
+            sod_ok = user not in scanners
             if not sod_ok:
                 messages.append(
-                    _("You scanned or counted on this session — cannot approve.")
+                    _("You scanned on this session — a different auditor must approve it.")
                 )
             wiz.sod_ok = sod_ok
 

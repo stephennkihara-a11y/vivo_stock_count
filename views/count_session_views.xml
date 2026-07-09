@@ -183,7 +183,7 @@
                     <notebook>
                         <page string="Sections">
                             <field name="section_ids">
-                                <list decoration-success="state == 'reconciled'" decoration-warning="state in ('scanning','physical_review')" decoration-info="state == 'pending_review'" decoration-muted="state == 'draft'">
+                                <list decoration-success="state == 'reconciled'" decoration-warning="state == 'scanning'" decoration-info="state == 'pending_review'" decoration-muted="state == 'draft'">
                                     <field name="sequence"/>
                                     <field name="name"/>
                                     <field name="zone_id"/>

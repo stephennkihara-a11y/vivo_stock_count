@@ -14,7 +14,6 @@
                 <field name="physical_counter_id"/>
                 <filter name="state_draft" string="Not Started" domain="[('state','=','draft')]"/>
                 <filter name="state_scanning" string="Scanning" domain="[('state','=','scanning')]"/>
-                <filter name="state_physical_review" string="Physical Review" domain="[('state','=','physical_review')]"/>
                 <filter name="state_pending" string="Awaiting Store Reconcile" domain="[('state','=','pending_review')]"/>
                 <filter name="state_reconciled" string="Reconciled" domain="[('state','=','reconciled')]"/>
                 <filter name="state_excluded" string="Left Out" domain="[('state','=','excluded')]"/>
@@ -33,7 +32,7 @@
 
     <!-- COLOUR-CODED SECTION PROGRESS BOARD — Phase 2 headline.
 
-         grey = draft / excluded, amber = scanning / physical_review,
+         grey = draft / excluded, amber = scanning,
          blue = pending_review (awaiting store reconcile), green = reconciled.
          Tile background is set via CSS class state-<state>. -->
     <record id="view_vivo_count_section_kanban" model="ir.ui.view">
@@ -88,7 +87,7 @@
         <field name="name">vivo.count.section.list</field>
         <field name="model">vivo.count.section</field>
         <field name="arch" type="xml">
-            <list string="Sections" decoration-success="state == 'reconciled'" decoration-warning="state in ('scanning','physical_review')" decoration-info="state == 'pending_review'" decoration-muted="state in ('draft','excluded')">
+            <list string="Sections" decoration-success="state == 'reconciled'" decoration-warning="state == 'scanning'" decoration-info="state == 'pending_review'" decoration-muted="state in ('draft','excluded')">
                 <field name="session_id"/>
                 <field name="zone_id"/>
                 <field name="name"/>
@@ -112,21 +111,19 @@
                 <header>
                     <button name="action_start_scanning" type="object" string="Start Scanning" class="btn-primary" invisible="state != 'draft'"/>
                     <button name="action_finish_scanning" type="object" string="Finish Scanning" class="btn-primary" invisible="state != 'scanning'"/>
-                    <button name="action_approve_scan" type="object" string="Approve" class="btn-primary" invisible="state != 'physical_review'"/>
-                    <button name="action_reject_scan" type="object" string="Reject (re-scan)" invisible="state != 'physical_review'"/>
-                    <field name="state" widget="statusbar" statusbar_visible="draft,scanning,physical_review,pending_review,reconciled"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,scanning,pending_review,reconciled"/>
                 </header>
                 <sheet>
                     <div class="alert alert-info" role="status" invisible="state in ('reconciled','excluded')">
-                        Workflow: <strong>Draft → Scanning → Physical Review → Approved (awaiting store reconcile) → Reconciled</strong>.
-                        The scanner scans and clicks <strong>Finish Scanning</strong>. A
-                        <strong>different</strong> second person then <strong>Approves</strong>
-                        the scanned result (or <strong>Rejects</strong> it back to scanning).
-                        On approval the rack is <strong>Approved — Awaiting Store Reconcile</strong>.
-                        Racks are no longer reconciled one by one: a manager/auditor reconciles
-                        the <strong>whole store in one pass</strong> from the session
-                        (<strong>Reconcile Store</strong>). A rack still unapproved when the
-                        store is reconciled is <strong>Left Out — Not Counted</strong>.
+                        Workflow: <strong>Draft → Scanning → Scanned (awaiting store reconcile) → Reconciled</strong>.
+                        The scanner scans and clicks <strong>Finish Scanning</strong>, which
+                        leaves the rack <strong>Scanned — Awaiting Store Reconcile</strong>.
+                        There is <strong>no separate approver</strong>: a
+                        <strong>different auditor</strong> then reviews and reconciles the
+                        <strong>whole store in one pass</strong> from the session
+                        (<strong>Reconcile Store</strong>) and posts it to stock. A rack still
+                        unfinished when the store is reconciled is
+                        <strong>Left Out — Not Counted</strong>.
                     </div>
                     <group>
                         <group>

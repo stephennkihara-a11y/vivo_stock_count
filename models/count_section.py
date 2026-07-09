@@ -5,20 +5,21 @@ from odoo.exceptions import AccessError, UserError, ValidationError
 SECTION_STATES = [
     ("draft", "Draft"),
     ("scanning", "Scanning"),
-    # Approve-then-review flow, reconciled at STORE level: the scanner scans, a
-    # DIFFERENT second person approves (or rejects) the scanned result, which
-    # leaves the rack "approved, awaiting store reconcile". A manager/auditor
-    # then reconciles the WHOLE store in one pass (vivo.count.session.
-    # action_reconcile_session) — racks are no longer reconciled one by one.
-    ("physical_review", "Physical Review"),
-    ("pending_review", "Approved — Awaiting Store Reconcile"),
+    # Two-party flow, reconciled at STORE level: the scanner scans a rack and
+    # finishes it, which leaves the rack "scanned, awaiting store reconcile"
+    # (pending_review) — there is NO separate second-person approval. A
+    # DIFFERENT auditor then reviews, reconciles the WHOLE store in one pass
+    # (vivo.count.session.action_reconcile_session) and applies to stock.
+    ("pending_review", "Scanned — Awaiting Store Reconcile"),
     ("reconciled", "Reconciled"),
     # A rack still unapproved when the store is reconciled (below the 100%
     # threshold) is left out of that reconcile and flagged here — not counted,
     # excluded from the GL post and the reconciliation report.
     ("excluded", "Left Out — Not Counted"),
-    # Legacy states retained only for data compatibility with sessions counted
-    # under the old independent-dual-count flow. The new flow never enters them.
+    # Legacy states retained only for data compatibility. The two-party flow
+    # never enters them; a migration moves any live `physical_review` rows to
+    # `pending_review` (the old second-person approval step is removed).
+    ("physical_review", "Physical Review (legacy)"),
     ("physical_count", "Physical Count (legacy)"),
     ("variance_rescan", "Variance Re-scan (legacy)"),
 ]
@@ -43,11 +44,11 @@ class VivoCountSection(models.Model):
     state = fields.Selection(SECTION_STATES, default="draft", required=True, copy=False)
 
     scanner_id = fields.Many2one("res.users", string="Scanner")
-    # The second person in the approve-then-review flow: they APPROVE the
-    # scanned result (they do not independently re-count). Must differ from the
-    # scanner — enforced by _check_segregation_of_duties. Field name kept for
-    # data/report continuity with the prior dual-count flow.
-    physical_counter_id = fields.Many2one("res.users", string="Approver (2nd person)")
+    # Legacy field, kept for data/report continuity with prior flows. The
+    # two-party flow has NO per-rack approver, so it is never stamped going
+    # forward; segregation of duties now lives at the session level
+    # (auditor != scanner — vivo.count.session._check_reviewer_not_scanner).
+    physical_counter_id = fields.Many2one("res.users", string="Approver (legacy)")
 
     line_ids = fields.One2many("vivo.count.line", "section_id", string="SKU Lines")
 
@@ -233,7 +234,12 @@ class VivoCountSection(models.Model):
         return True
 
     def action_finish_scanning(self):
-        """scanning -> physical_review (the second person's approve/reject stage)."""
+        """scanning -> pending_review ("scanned, awaiting store reconcile").
+
+        Two-party flow: the scanner finishing a rack makes it ready for the
+        auditor's store reconcile. There is NO separate second-person approval —
+        the scanner scanning the rack is enough to make it ready.
+        """
         for section in self:
             if section.state != "scanning":
                 raise UserError(_("Section %s is not in scanning state.") % section.name)
@@ -241,59 +247,8 @@ class VivoCountSection(models.Model):
                 raise UserError(
                     _("Section %s has unresolved 'no barcode' lines.") % section.name
                 )
-            section.write({"state": "physical_review", "locked_by_id": False, "locked_at": False})
-        return True
-
-    def action_approve_scan(self):
-        """physical_review -> pending_review.
-
-        The second person approves the scanned result (they do NOT re-count).
-        They are stamped as the approver (physical_counter_id); segregation of
-        duties (approver != scanner) is enforced by
-        `_check_segregation_of_duties` on that write.
-        """
-        for section in self:
-            if section.state != "physical_review":
-                raise UserError(
-                    _("Section %s is not awaiting approval.") % section.name
-                )
             section.write(
-                {
-                    "physical_counter_id": self.env.user.id,
-                    "state": "pending_review",
-                }
-            )
-        return True
-
-    def action_reject_scan(self):
-        """physical_review -> scanning (reject; the scanner re-scans).
-
-        Increments rescan_count and clears the pending approval. The scanned
-        lines are preserved so the scanner can correct rather than start over
-        (a manager bounce, `_bounce_from_review`, is the wipe-and-redo path).
-        """
-        for section in self:
-            if section.state != "physical_review":
-                raise UserError(
-                    _("Section %s is not awaiting approval.") % section.name
-                )
-            if (
-                section.scanner_id
-                and self.env.user == section.scanner_id
-                and self.env.uid != SUPERUSER_ID
-            ):
-                raise ValidationError(
-                    _("The scanner cannot reject their own scan (section %s).")
-                    % section.name
-                )
-            section.write(
-                {
-                    "state": "scanning",
-                    "physical_counter_id": False,
-                    "rescan_count": section.rescan_count + 1,
-                    "locked_by_id": False,
-                    "locked_at": False,
-                }
+                {"state": "pending_review", "locked_by_id": False, "locked_at": False}
             )
         return True
 
@@ -308,7 +263,8 @@ class VivoCountSection(models.Model):
         automatically, skipping the review step. A mismatch still routes to
         `variance_rescan` unchanged.
 
-        Required-different-user enforced by `_check_segregation_of_duties`.
+        Legacy path (old independent dual-count); the two-party flow never
+        reaches `physical_count`.
         """
         for section in self:
             if section.state != "physical_count":
@@ -539,24 +495,10 @@ class VivoCountSection(models.Model):
         self.write({"locked_by_id": False, "locked_at": False})
         return True
 
-    # ------------------------------------------------------------------
-    # Constraints — segregation of duties (AC #3)
-    # ------------------------------------------------------------------
-    @api.constrains("scanner_id", "physical_counter_id")
-    def _check_segregation_of_duties(self):
-        for section in self:
-            if (
-                section.scanner_id
-                and section.physical_counter_id
-                and section.scanner_id == section.physical_counter_id
-            ):
-                raise ValidationError(
-                    _(
-                        "Section %s: the scanner and the physical counter must be "
-                        "two different users. No one can verify their own scan."
-                    )
-                    % section.name
-                )
+    # Segregation of duties in the two-party flow is enforced at the SESSION
+    # level (the auditor who reviews/reconciles/applies must differ from the
+    # scanner — vivo.count.session._check_reviewer_not_scanner), not per rack.
+    # The old rack-level scanner!=approver constraint is gone with the approver.
 
     # ------------------------------------------------------------------
     # PWA API (Phase 3)
@@ -617,26 +559,11 @@ class VivoCountSection(models.Model):
         }
 
     def finish_scanning_pwa(self):
+        """Scanner finishes the rack -> pending_review (ready for store
+        reconcile). No second-person approval in the two-party flow."""
         self.ensure_one()
         self.action_finish_scanning()
         return {"id": self.id, "state": self.state}
-
-    def approve_scan_pwa(self, idempotency_key=None):
-        """Second person approves the scanned result (physical_review ->
-        pending_review). Idempotent for offline replay."""
-        self.ensure_one()
-        if idempotency_key and self.last_physical_idem_key == idempotency_key:
-            return {"id": self.id, "state": self.state, "idempotent": True}
-        self.action_approve_scan()
-        if idempotency_key:
-            self.last_physical_idem_key = idempotency_key
-        return {"id": self.id, "state": self.state}
-
-    def reject_scan_pwa(self):
-        """Second person rejects the scan (physical_review -> scanning)."""
-        self.ensure_one()
-        self.action_reject_scan()
-        return {"id": self.id, "state": self.state, "rescan_count": self.rescan_count}
 
     def submit_physical_pwa(self, physical_qty, idempotency_key=None):
         """Physical counter submits their independent headcount.
