@@ -215,6 +215,10 @@ async function renderScanner() {
     $main.innerHTML = `
         <div class="screen scanner">
             <div class="back" id="back">← Racks</div>
+            <div class="actions">
+                <button id="btn-finish" class="btn primary">Finish scanning</button>
+                <button id="btn-pause" class="btn ghost">Pause</button>
+            </div>
             <h2>${state.section.name}</h2>
             <div class="scan-bar">
                 <input id="barcode-input" placeholder="Scan or type barcode" autocomplete="off" autofocus inputmode="text"/>
@@ -226,10 +230,6 @@ async function renderScanner() {
             <div id="line-list" class="list compact"></div>
             <div class="totals">
                 <span>Scan total</span><strong id="scan-total">0</strong>
-            </div>
-            <div class="actions">
-                <button id="btn-finish" class="btn primary">Finish scanning</button>
-                <button id="btn-pause" class="btn ghost">Pause</button>
             </div>
         </div>`;
 
@@ -274,9 +274,10 @@ async function handleScan(barcode) {
         if ($last) $last.innerHTML = `<div class="warn">No SKU found for ${barcode}</div>`;
         return;
     }
-    // Scan-once-then-type-qty (AC #6). Default 1; user can edit and re-tap.
-    const qty = Number(prompt(`Quantity for ${product.name}?`, '1'));
-    if (!qty || qty <= 0) return;
+    // Auto-add one unit per scan — a barcode scanner fires once per physical
+    // item, so no quantity prompt. Repeat scans of the same SKU accumulate
+    // (record_scan sums scanned_qty server-side).
+    const qty = 1;
     const r = await api.scan({
         section_id: state.section.id,
         product_id: product.product_id || product.id,
