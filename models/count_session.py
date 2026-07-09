@@ -553,6 +553,24 @@ class VivoCountSession(models.Model):
             pct = 100
         return max(0, min(100, pct))
 
+    def _store_reconcile_readiness(self):
+        """(ready_pct, approved_racks, outstanding_racks) for the approved
+        threshold shared by Submit-for-Review and the store reconcile.
+
+        A rack is READY once a second person has approved its scan
+        (`pending_review`), or it is already reconciled/excluded. Outstanding =
+        racks nobody has approved yet (draft/scanning/physical_review). The
+        percentage is measured against total racks."""
+        self.ensure_one()
+        sections = self.section_ids
+        approved = sections.filtered(lambda s: s.state == "pending_review")
+        outstanding = sections.filtered(
+            lambda s: s.state in ("draft", "scanning", "physical_review")
+        )
+        total = len(sections)
+        ready_pct = 100.0 * (total - len(outstanding)) / total if total else 0.0
+        return ready_pct, approved, outstanding
+
     def action_reconcile_session(self, review_note=None):
         """Reconcile the WHOLE store in one pass — replaces per-rack reconcile.
 
@@ -561,30 +579,31 @@ class VivoCountSession(models.Model):
         reconcile" (`pending_review`). The auditor then runs THIS once for the
         whole store instead of reconciling ~30 racks individually.
 
-        Available once at least `store_reconcile_min_approved_pct` percent of the
-        racks are approved (default 100). Below that it is blocked with a message
-        naming the racks still outstanding. Racks not approved at reconcile time
-        are EXCLUDED (left out and flagged) rather than blocking the close.
+        Order: Submit-for-Review is the counters' handoff and comes FIRST — it
+        moves the session to `review` on the approved threshold. The auditor then
+        runs this reconcile IN `review` (it also still runs from in_progress /
+        counted for flexibility). Available once at least
+        `store_reconcile_min_approved_pct` percent of the racks are approved
+        (default 100); below that it is blocked with the outstanding racks named.
+        Racks not approved at reconcile time are EXCLUDED (left out and flagged)
+        rather than blocking the close.
 
         On confirm, in one transaction: a manager/auditor band is required; every
         approved rack passes the per-line variance-reason gate, is reconciled and
-        stamped with `reconciled_by_id`; outstanding racks are marked `excluded`;
-        and the session advances to `counted` so the existing Submit-for-Review
-        -> Approve -> Post-to-Inventory chain (and GL posting) runs unchanged.
+        stamped with `reconciled_by_id`; outstanding racks are marked `excluded`.
+        The session stays in `review` (or auto-advances to `counted` if reconcile
+        was run pre-submit) so the existing Approve -> Post-to-Inventory chain
+        (and GL posting) runs unchanged.
         """
-        self._ensure_state({"in_progress", "counted"})
+        self._ensure_state({"in_progress", "counted", "review"})
         for session in self:
             sections = session.section_ids
             if not sections:
                 raise UserError(
                     _("Session %s has no racks to reconcile.") % session.name
                 )
-            approved = sections.filtered(lambda s: s.state == "pending_review")
-            outstanding = sections.filtered(
-                lambda s: s.state in ("draft", "scanning", "physical_review")
-            )
             min_pct = session._store_reconcile_min_approved_pct()
-            ready_pct = 100.0 * (len(sections) - len(outstanding)) / len(sections)
+            ready_pct, approved, outstanding = session._store_reconcile_readiness()
             if ready_pct < min_pct:
                 raise UserError(
                     _(
@@ -619,25 +638,38 @@ class VivoCountSession(models.Model):
         return True
 
     def action_submit_for_review(self):
-        """in_progress -> counted -> review.
+        """in_progress -> review: the counters' HANDOFF to the auditor.
 
-        Auto-advances when all sections are reconciled (AC #4). Reviewer is
-        auto-set to the user clicking the button so the audit trail records
-        who actually performed the review action; manual override remains
-        available on the form.
+        Submit-for-Review comes BEFORE reconciliation. It requires the racks to
+        be APPROVED (a second person approved each scan) to the configured
+        `store_reconcile_min_approved_pct` threshold — NOT reconciled. The
+        auditor reconciles the whole store afterwards from `review`
+        (`action_reconcile_session`). Below the approved threshold, submit is
+        blocked with the not-yet-approved racks named.
+
+        Reviewer is auto-set to the user clicking the button so the audit trail
+        records who performed the handoff; manual override remains on the form.
         """
         self._ensure_state({"in_progress", "counted"})
         for session in self:
-            outstanding = session.section_ids.filtered(
-                lambda s: s.state not in ("reconciled", "excluded")
-            )
-            if outstanding:
+            if not session.section_ids:
+                raise UserError(
+                    _("Session %s has no racks to submit for review.") % session.name
+                )
+            min_pct = session._store_reconcile_min_approved_pct()
+            ready_pct, _approved, outstanding = session._store_reconcile_readiness()
+            if ready_pct < min_pct:
                 raise UserError(
                     _(
-                        "Cannot submit for review — these racks are neither "
-                        "reconciled nor excluded: %s. Run the store reconcile first."
+                        "Cannot submit for review — only %(pct).0f%% of racks are "
+                        "approved (need %(min)s%%). These racks are not yet "
+                        "approved: %(racks)s"
                     )
-                    % ", ".join(outstanding.mapped("name"))
+                    % {
+                        "pct": ready_pct,
+                        "min": min_pct,
+                        "racks": ", ".join(outstanding.mapped("name")),
+                    }
                 )
             session.write(
                 {
@@ -1028,8 +1060,14 @@ class VivoCountSession(models.Model):
     # ------------------------------------------------------------------
     @api.constrains("state", "section_ids")
     def _check_advance_requires_reconciled_sections(self):
+        # `review` is now the auditor's reconcile stage: the session enters it on
+        # the APPROVED threshold (Submit-for-Review handoff), with racks still
+        # `pending_review`, and the auditor reconciles them from here. So review
+        # no longer requires reconciled racks — but `counted`, `approved` and
+        # `applied` (the post-reconcile, GL-bound states) still do, which also
+        # enforces reconcile-before-approve.
         for session in self:
-            if session.state in {"counted", "review", "approved", "applied"}:
+            if session.state in {"counted", "approved", "applied"}:
                 outstanding = session.section_ids.filtered(
                     lambda s: s.state not in ("reconciled", "excluded")
                 )
