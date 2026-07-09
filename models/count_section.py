@@ -5,12 +5,18 @@ from odoo.exceptions import AccessError, UserError, ValidationError
 SECTION_STATES = [
     ("draft", "Draft"),
     ("scanning", "Scanning"),
-    # Approve-then-review flow: the scanner scans, a DIFFERENT second person
-    # approves (or rejects) the scanned result, then a manager/auditor reviews,
-    # records a variance note, and reconciles.
+    # Approve-then-review flow, reconciled at STORE level: the scanner scans, a
+    # DIFFERENT second person approves (or rejects) the scanned result, which
+    # leaves the rack "approved, awaiting store reconcile". A manager/auditor
+    # then reconciles the WHOLE store in one pass (vivo.count.session.
+    # action_reconcile_session) — racks are no longer reconciled one by one.
     ("physical_review", "Physical Review"),
-    ("pending_review", "Pending Review"),
+    ("pending_review", "Approved — Awaiting Store Reconcile"),
     ("reconciled", "Reconciled"),
+    # A rack still unapproved when the store is reconciled (below the 100%
+    # threshold) is left out of that reconcile and flagged here — not counted,
+    # excluded from the GL post and the reconciliation report.
+    ("excluded", "Left Out — Not Counted"),
     # Legacy states retained only for data compatibility with sessions counted
     # under the old independent-dual-count flow. The new flow never enters them.
     ("physical_count", "Physical Count (legacy)"),
@@ -136,11 +142,11 @@ class VivoCountSection(models.Model):
     # ------------------------------------------------------------------
     # `force_reconciled` is what lets a section land in `reconciled` while
     # scan_total_qty != physical_total_qty (see `_check_reconcile_match`), i.e.
-    # it overrides the two-counter integrity check. `action_confirm_reconcile`
-    # already gates that, but the counter record rule grants counters write
-    # access to sections in an in-progress session — so a plain ORM
-    # write/create of these fields must be blocked here too, or the method
-    # gate is trivially bypassable.
+    # it overrides the two-counter integrity check. The store-level reconcile
+    # (`vivo.count.session.action_reconcile_session`) already gates that, but the
+    # counter record rule grants counters write access to sections in an
+    # in-progress session — so a plain ORM write/create of these fields must be
+    # blocked here too, or the method gate is trivially bypassable.
     _FORCE_FIELDS = ("force_reconciled", "force_reconcile_reason")
 
     @api.model_create_multi
@@ -154,10 +160,14 @@ class VivoCountSection(models.Model):
     def write(self, vals):
         # Force-reconcile fields stay manager-only (preserves the earlier
         # security fix). The approve-then-review flow makes EVERY reconcile a
-        # manager decision, so moving a section into `reconciled` by any write
-        # path is also gated here — closing the direct-write bypass the counter
-        # record rule would otherwise leave open.
-        if any(vals.get(f) for f in self._FORCE_FIELDS) or vals.get("state") == "reconciled":
+        # manager decision, so moving a section into `reconciled` — or leaving it
+        # out via `excluded` at store reconcile — by any write path is gated
+        # here, closing the direct-write bypass the counter record rule would
+        # otherwise leave open.
+        if (
+            any(vals.get(f) for f in self._FORCE_FIELDS)
+            or vals.get("state") in ("reconciled", "excluded")
+        ):
             self._check_auditor_band()
         return super().write(vals)
 
@@ -291,7 +301,8 @@ class VivoCountSection(models.Model):
         """physical_count -> pending_review | reconciled | variance_rescan.
 
         On a scan-vs-physical match the section routes to `pending_review`
-        for auditor sign-off (see `action_confirm_reconcile`). If the
+        for the store-level reconcile (see
+        `vivo.count.session.action_reconcile_session`). If the
         `vivo_count.auto_close_zero_variance` toggle is on (default) and the
         section carries no genuine variance to audit, it reconciles
         automatically, skipping the review step. A mismatch still routes to
@@ -454,59 +465,31 @@ class VivoCountSection(models.Model):
                 )
             )
 
-    def action_confirm_reconcile(self, review_note=None, physical_qty=None, force_reason=None):
-        """pending_review -> reconciled, stamping reconciled_by_id.
+    def _reconcile_sections(self, review_note, reconciled_by):
+        """Reconcile approved racks — the internal worker behind the store-level
+        reconcile (``vivo.count.session.action_reconcile_session``).
 
-        Approve-then-review flow: the reviewer must be a manager/auditor band
-        (`_check_auditor_band`) and must record a MANDATORY variance note. There
-        is no independent physical count to match — the recorded note is the
-        integrity gate (`_check_reconcile_requires_note`).
-
-        Legacy force path preserved: if an authoritative ``physical_qty`` is
-        supplied and differs from the scan total, the override is recorded via
-        ``force_reconciled`` / ``force_reconcile_reason`` (whose write is itself
-        band-guarded), keeping that control intact.
+        Reconciliation is no longer a per-rack action: there is no rack-level
+        button. The session reconcile calls this on every APPROVED rack
+        (``pending_review``) in one transaction, after it has checked the
+        auditor band and the configured approval threshold. Each rack still
+        passes the per-line variance-reason gate and records the mandatory
+        reviewer note; the band is re-enforced on the ``reconciled`` write
+        (see ``write``), so this stays safe even if called directly.
         """
+        if not review_note:
+            raise ValidationError(
+                _("A variance/review note is required to reconcile.")
+            )
         for section in self:
             if section.state != "pending_review":
                 raise UserError(
-                    _("Section %s is not pending review.") % section.name
+                    _("Section %s is not awaiting store reconcile.") % section.name
                 )
-            section._check_auditor_band()
-            note = review_note or force_reason
-            if not note:
-                raise ValidationError(
-                    _(
-                        "Section %s: a variance note is required to reconcile."
-                    )
-                    % section.name
-                )
-            vals = {"review_note": note}
-            if physical_qty is not None:
-                section.physical_total_qty = physical_qty
-            if section.physical_total_qty and section.scan_total_qty != section.physical_total_qty:
-                # Authoritative physical figure differs from the scan — record
-                # the override on the audit trail (band-guarded write).
-                vals["force_reconciled"] = True
-                vals["force_reconcile_reason"] = note
-            section.write(vals)
             section._check_counted_variance_reasons()
-            section._do_reconcile(reconciled_by=self.env.user)
+            section.write({"review_note": review_note})
+            section._do_reconcile(reconciled_by=reconciled_by)
         return True
-
-    def action_open_section_review_wizard(self):
-        """Open the Review & Reconcile wizard for a pending-review section."""
-        self.ensure_one()
-        if self.state != "pending_review":
-            raise UserError(_("Section %s is not pending review.") % self.name)
-        return {
-            "type": "ir.actions.act_window",
-            "name": _("Review & Reconcile — %s") % self.name,
-            "res_model": "vivo.count.section.review.wizard",
-            "view_mode": "form",
-            "target": "new",
-            "context": {"default_section_id": self.id},
-        }
 
     def _bounce_from_review(self):
         """Manager-driven bounce from review back to scanning.

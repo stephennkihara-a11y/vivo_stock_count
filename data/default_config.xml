@@ -33,5 +33,9 @@
             <field name="key">vivo_count.rescan_review_threshold</field>
             <field name="value">1</field>
         </record>
+        <record id="cp_store_reconcile_min_approved_pct" model="ir.config_parameter">
+            <field name="key">vivo_count.store_reconcile_min_approved_pct</field>
+            <field name="value">100</field>
+        </record>
     </data>
 </odoo>

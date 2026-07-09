@@ -106,6 +106,22 @@ class VivoCountSession(models.Model):
     sections_total = fields.Integer(compute="_compute_section_counts", store=True)
     sections_reconciled = fields.Integer(compute="_compute_section_counts", store=True)
     sections_outstanding = fields.Integer(compute="_compute_section_counts", store=True)
+    # Approve-then-review, reconciled at store level: racks sit "approved,
+    # awaiting store reconcile" (pending_review) until the auditor reconciles the
+    # whole store in one pass. These drive the reconcile threshold + summary.
+    sections_approved = fields.Integer(
+        compute="_compute_section_counts", store=True,
+        help="Racks approved by the second person and awaiting store reconcile.",
+    )
+    sections_excluded = fields.Integer(
+        compute="_compute_section_counts", store=True,
+        help="Racks left out of the store reconcile (unapproved at close).",
+    )
+    approved_pct = fields.Float(
+        compute="_compute_section_counts", store=True,
+        help="Percent of racks ready for store reconcile (approved or already "
+             "reconciled) — compared against the reconcile threshold.",
+    )
 
     scheduled_date = fields.Datetime(default=fields.Datetime.now, tracking=True)
     start_date = fields.Datetime(readonly=True, copy=False)
@@ -170,9 +186,20 @@ class VivoCountSession(models.Model):
     def _compute_section_counts(self):
         for session in self:
             sections = session.section_ids
-            session.sections_total = len(sections)
-            session.sections_reconciled = sum(1 for s in sections if s.state == "reconciled")
-            session.sections_outstanding = session.sections_total - session.sections_reconciled
+            total = len(sections)
+            reconciled = sum(1 for s in sections if s.state == "reconciled")
+            approved = sum(1 for s in sections if s.state == "pending_review")
+            excluded = sum(1 for s in sections if s.state == "excluded")
+            session.sections_total = total
+            session.sections_reconciled = reconciled
+            session.sections_approved = approved
+            session.sections_excluded = excluded
+            # Settled = reconciled or excluded; outstanding is everything else.
+            session.sections_outstanding = total - reconciled - excluded
+            # Ready for store reconcile = approved (or already reconciled).
+            session.approved_pct = (
+                100.0 * (approved + reconciled) / total if total else 0.0
+            )
 
     @api.depends(
         "line_ids.counted_qty",
@@ -496,18 +523,100 @@ class VivoCountSession(models.Model):
             )
 
     def _maybe_auto_advance_to_counted(self):
-        """in_progress -> counted when every section has reconciled.
+        """in_progress -> counted once every section is settled.
 
-        Spec 4.1: 'The session auto-advances; it cannot reach this state
-        while any section is still unreconciled.'
+        A section is settled when it is `reconciled` or `excluded` (left out of
+        the store reconcile). At least one rack must actually be reconciled — a
+        session where every rack was excluded has nothing to post and must not
+        advance.
         """
         for session in self:
+            sections = session.section_ids
             if (
                 session.state == "in_progress"
-                and session.section_ids
-                and all(s.state == "reconciled" for s in session.section_ids)
+                and sections
+                and all(s.state in ("reconciled", "excluded") for s in sections)
+                and any(s.state == "reconciled" for s in sections)
             ):
                 session.state = "counted"
+
+    def _store_reconcile_min_approved_pct(self):
+        """Percent of racks that must be approved before the store can be
+        reconciled (config `vivo_count.store_reconcile_min_approved_pct`,
+        default 100). Clamped to 0..100."""
+        val = self.env["ir.config_parameter"].sudo().get_param(
+            "vivo_count.store_reconcile_min_approved_pct", "100"
+        )
+        try:
+            pct = int(val)
+        except (TypeError, ValueError):
+            pct = 100
+        return max(0, min(100, pct))
+
+    def action_reconcile_session(self, review_note=None):
+        """Reconcile the WHOLE store in one pass — replaces per-rack reconcile.
+
+        Racks are counted (scanning) and approved (a second person approves the
+        scan) per rack as before, leaving each "approved, awaiting store
+        reconcile" (`pending_review`). The auditor then runs THIS once for the
+        whole store instead of reconciling ~30 racks individually.
+
+        Available once at least `store_reconcile_min_approved_pct` percent of the
+        racks are approved (default 100). Below that it is blocked with a message
+        naming the racks still outstanding. Racks not approved at reconcile time
+        are EXCLUDED (left out and flagged) rather than blocking the close.
+
+        On confirm, in one transaction: a manager/auditor band is required; every
+        approved rack passes the per-line variance-reason gate, is reconciled and
+        stamped with `reconciled_by_id`; outstanding racks are marked `excluded`;
+        and the session advances to `counted` so the existing Submit-for-Review
+        -> Approve -> Post-to-Inventory chain (and GL posting) runs unchanged.
+        """
+        self._ensure_state({"in_progress", "counted"})
+        for session in self:
+            sections = session.section_ids
+            if not sections:
+                raise UserError(
+                    _("Session %s has no racks to reconcile.") % session.name
+                )
+            approved = sections.filtered(lambda s: s.state == "pending_review")
+            outstanding = sections.filtered(
+                lambda s: s.state in ("draft", "scanning", "physical_review")
+            )
+            min_pct = session._store_reconcile_min_approved_pct()
+            ready_pct = 100.0 * (len(sections) - len(outstanding)) / len(sections)
+            if ready_pct < min_pct:
+                raise UserError(
+                    _(
+                        "Store reconcile needs at least %(min)s%% of racks "
+                        "approved (only %(pct).0f%% are ready). These racks are "
+                        "not yet approved: %(racks)s"
+                    )
+                    % {
+                        "min": min_pct,
+                        "pct": ready_pct,
+                        "racks": ", ".join(outstanding.mapped("name")),
+                    }
+                )
+            if not approved:
+                raise UserError(
+                    _("No approved racks to reconcile in session %s.") % session.name
+                )
+            note = review_note
+            if not note:
+                raise ValidationError(
+                    _("A store-level variance/review note is required to reconcile.")
+                )
+            # Manager/auditor band — one check for the whole store (re-enforced
+            # per rack on the `reconciled` write).
+            self.env["vivo.count.section"]._check_auditor_band()
+            # Reconcile every approved rack (per-line variance-reason gate runs
+            # inside), then flag the rest as left out — all in this transaction.
+            approved._reconcile_sections(review_note=note, reconciled_by=self.env.user)
+            if outstanding:
+                outstanding.write({"state": "excluded"})
+            session._maybe_auto_advance_to_counted()
+        return True
 
     def action_submit_for_review(self):
         """in_progress -> counted -> review.
@@ -519,10 +628,15 @@ class VivoCountSession(models.Model):
         """
         self._ensure_state({"in_progress", "counted"})
         for session in self:
-            outstanding = session.section_ids.filtered(lambda s: s.state != "reconciled")
+            outstanding = session.section_ids.filtered(
+                lambda s: s.state not in ("reconciled", "excluded")
+            )
             if outstanding:
                 raise UserError(
-                    _("Cannot submit for review — these sections are not reconciled: %s")
+                    _(
+                        "Cannot submit for review — these racks are neither "
+                        "reconciled nor excluded: %s. Run the store reconcile first."
+                    )
                     % ", ".join(outstanding.mapped("name"))
                 )
             session.write(
@@ -916,7 +1030,9 @@ class VivoCountSession(models.Model):
     def _check_advance_requires_reconciled_sections(self):
         for session in self:
             if session.state in {"counted", "review", "approved", "applied"}:
-                outstanding = session.section_ids.filtered(lambda s: s.state != "reconciled")
+                outstanding = session.section_ids.filtered(
+                    lambda s: s.state not in ("reconciled", "excluded")
+                )
                 if outstanding:
                     raise ValidationError(
                         _(

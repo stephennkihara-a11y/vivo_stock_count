@@ -44,6 +44,16 @@ class ResConfigSettings(models.TransientModel):
              "in Variance Re-scan. Default 1: one re-scan attempt, then the "
              "auditor decides.",
     )
+    vivo_count_store_reconcile_min_approved_pct = fields.Integer(
+        string="Store reconcile: minimum approved racks (%)",
+        config_parameter="vivo_count.store_reconcile_min_approved_pct",
+        default=100,
+        help="The auditor reconciles the whole store in one pass. This is the "
+             "minimum percent of a session's racks that must be approved before "
+             "that store reconcile is allowed. Default 100 (every rack). Lower "
+             "it (e.g. 90) so a stuck rack is left out and flagged rather than "
+             "blocking the store close.",
+    )
     vivo_count_trading_deadline = fields.Char(
         string="Store trading deadline",
         config_parameter="vivo_count.trading_deadline",
