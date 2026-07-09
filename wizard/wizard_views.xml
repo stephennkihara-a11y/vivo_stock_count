@@ -58,9 +58,12 @@
                     <field name="is_mismatch" invisible="1"/>
                     <div class="alert alert-info" role="status" invisible="is_mismatch">
                         Scan total equals the physical count, so this section is ready to
-                        reconcile. Give a variance reason (and a note for 'Other') for every
-                        counted line that differs from the system, then confirm. Only the
-                        items counted on this rack are shown.
+                        reconcile. Every SKU is listed below — items counted on this rack
+                        (with any +/- variance) and items in the system snapshot that were
+                        <strong>not counted here</strong>. Give a variance reason (and a note
+                        for 'Other') for every <em>counted</em> line that differs from the
+                        system, then confirm. A "not counted here" line needs no reason —
+                        it is pending on another rack — but you may leave a remark.
                     </div>
                     <div class="alert alert-warning" role="alert" invisible="not is_mismatch">
                         The scanner's total and the physical counter's headcount still
@@ -74,15 +77,18 @@
                         <field name="authoritative_qty" invisible="not is_mismatch"/>
                         <field name="force_reason" invisible="not is_mismatch" required="is_mismatch"/>
                     </group>
-                    <field name="line_ids" domain="[('line_status', '=', 'counted')]">
-                        <list editable="bottom" decoration-danger="difference &lt; 0" decoration-success="difference &gt; 0">
+                    <field name="line_ids">
+                        <list editable="bottom" create="0" delete="0" default_order="line_status asc, product_id"
+                              decoration-danger="line_status == 'counted' and difference &lt; 0"
+                              decoration-success="line_status == 'counted' and difference &gt; 0"
+                              decoration-muted="line_status == 'not_counted'">
                             <field name="product_id" readonly="1"/>
-                            <field name="system_qty" readonly="1"/>
-                            <field name="counted_qty" readonly="1"/>
-                            <field name="difference" readonly="1"/>
-                            <field name="variance_reason" required="difference != 0"/>
-                            <field name="variance_note"/>
-                            <field name="line_status" column_invisible="1"/>
+                            <field name="line_status" string="Status" readonly="1"/>
+                            <field name="system_qty" string="System" readonly="1"/>
+                            <field name="counted_qty" string="Counted" readonly="1"/>
+                            <field name="difference" string="Variance" readonly="1"/>
+                            <field name="variance_reason" required="line_status == 'counted' and difference != 0"/>
+                            <field name="variance_note" string="Remark"/>
                         </list>
                     </field>
                 </sheet>

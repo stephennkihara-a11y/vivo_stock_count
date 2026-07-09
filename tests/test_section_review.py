@@ -98,6 +98,56 @@ class TestSectionReview(VivoCountCommon):
         self.assertTrue(section.reconciled_at)
         self.assertEqual(section.reconciled_by_id, self.store_manager)
 
+    def test_wizard_lists_all_skus_including_not_counted(self):
+        """Item 5: the reconcile screen shows every SKU — counted variances AND
+        items in the snapshot not counted on this rack — and a not-counted line
+        carries no reason and must not block confirmation."""
+        session = self._new_session()
+        section = self._start_and_get_sections(session)[0]
+        section.scanner_id = self.scanner.id
+        section.with_user(self.scanner).action_start_scanning()
+        # A counted variance (reasoned) ...
+        self.Line.create(
+            {
+                "section_id": section.id,
+                "product_id": self.product_a.id,
+                "system_qty": 10.0,
+                "counted_qty": 8.0,
+                "unit_cost": self.product_a.standard_price,
+                "variance_reason": "miscount",
+            }
+        )
+        # ... and a system SKU that was not counted on this rack.
+        self.Line.create(
+            {
+                "section_id": section.id,
+                "product_id": self.product_b.id,
+                "system_qty": 4.0,
+                "counted_qty": 0.0,
+                "unit_cost": self.product_b.standard_price,
+            }
+        )
+        section.with_user(self.scanner).action_finish_scanning()
+        section.physical_counter_id = self.physical.id
+        section.with_user(self.physical).action_submit_physical_count(physical_qty=8)
+        self.assertEqual(section.state, "pending_review")
+
+        wiz = self.env["vivo.count.section.review.wizard"].create(
+            {"section_id": section.id}
+        )
+        # Both buckets are present on the reconcile screen.
+        statuses = set(wiz.line_ids.mapped("line_status"))
+        self.assertIn("counted", statuses)
+        self.assertIn("not_counted", statuses)
+        not_counted = wiz.line_ids.filtered(lambda l: l.line_status == "not_counted")
+        self.assertEqual(not_counted.product_id, self.product_b)
+        self.assertEqual(not_counted.system_qty, 4.0)
+        self.assertEqual(not_counted.counted_qty, 0.0)
+        self.assertFalse(not_counted.variance_reason)
+        # The not-counted line does not demand a reason at confirm.
+        wiz.with_user(self.store_manager).action_confirm()
+        self.assertEqual(section.state, "reconciled")
+
     def test_pending_review_blocks_session_advance(self):
         section = self._submit_section(sys=10, cnt=8, physical=8, reason="miscount")
         session = section.session_id
