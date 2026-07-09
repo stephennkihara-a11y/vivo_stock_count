@@ -466,8 +466,15 @@ class VivoCountSession(models.Model):
         Stored on `vivo.count.line.system_qty` and is the immutable basis
         for both variance computation and the reconciliation's
         `qty_before` (A5).
+
+        Only Full Inventory Count (snapshot) sessions pre-load lines. This
+        method is a no-op for Quick Count (scan_to_populate) regardless of who
+        calls it, so a quick-count session is guaranteed to open blank in every
+        code path — not only via `action_start`.
         """
         self.ensure_one()
+        if self.count_mode != "snapshot":
+            return
         Quant = self.env["stock.quant"]
         Line = self.env["vivo.count.line"]
         location = self.location_id

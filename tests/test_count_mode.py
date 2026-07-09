@@ -65,6 +65,16 @@ class TestCountMode(VivoCountCommon):
         session = self._quick_session_started()
         self.assertEqual(len(session.line_ids), 0)
 
+    def test_snapshot_is_no_op_for_quick_count_even_if_called(self):
+        """Guarantee: quick-count sessions never preload, even if the snapshot
+        helper is invoked directly (defence beyond the action_start gate)."""
+        self._seed_onhand(self.product_a, 10)
+        self._seed_onhand(self.product_b, 4)
+        session = self._quick_session_started()
+        # Direct call must not create any lines.
+        session._snapshot_system_quantities()
+        self.assertEqual(len(session.line_ids), 0)
+
     def test_first_scan_creates_line_with_frozen_onhand(self):
         self._seed_onhand(self.product_a, 10)
         session = self._quick_session_started()
