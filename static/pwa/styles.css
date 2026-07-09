@@ -114,6 +114,30 @@ h3 { margin: 0; color: var(--muted); font-size: 1em; }
     font-size: 1.1em;
 }
 .actions { display: flex; gap: 8px; }
+
+/* Scanner screen: keep the Finish/Pause controls reachable no matter how many
+   lines have been scanned. The scanned-items list scrolls inside its own
+   bounded area, and the action bar (with the running total) is pinned to the
+   bottom of the viewport so it never gets pushed off-screen. */
+.screen.scanner #line-list {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    /* Fallback cap for browsers that don't give the flex column a height. */
+    max-height: 48vh;
+}
+.screen.scanner .totals,
+.screen.scanner .actions {
+    position: sticky;
+    z-index: 5;
+    background: var(--bg);
+}
+.screen.scanner .totals { bottom: 56px; margin-bottom: 0; }
+.screen.scanner .actions {
+    bottom: 0;
+    padding: 8px 0 10px;
+    box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.06);
+}
 .btn {
     padding: 14px 18px;
     border-radius: 8px;
