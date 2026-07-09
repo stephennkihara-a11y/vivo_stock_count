@@ -33,7 +33,7 @@
     <!-- COLOUR-CODED SECTION PROGRESS BOARD — Phase 2 headline.
 
          grey = draft, amber = scanning / physical_count,
-         red = variance_rescan, green = reconciled.
+         blue = pending_review, green = reconciled.
          Tile background is set via CSS class state-<state>. -->
     <record id="view_vivo_count_section_kanban" model="ir.ui.view">
         <field name="name">vivo.count.section.kanban</field>
@@ -112,7 +112,8 @@
                     <button name="action_start_scanning" type="object" string="Start Scanning" class="btn-primary" invisible="state != 'draft'"/>
                     <button name="action_finish_scanning" type="object" string="Finish Scanning" class="btn-primary" invisible="state != 'scanning'"/>
                     <button name="action_submit_physical_count" type="object" string="Submit for Review" class="btn-primary" invisible="state != 'physical_count'"/>
-                    <button name="action_open_section_review_wizard" type="object" string="Review &amp; Reconcile" class="btn-primary" invisible="state != 'pending_review'"/>
+                    <button name="action_open_section_review_wizard" type="object" string="Review &amp; Reconcile" class="btn-primary" invisible="state != 'pending_review' or not session_all_submitted"/>
+                    <field name="session_all_submitted" invisible="1"/>
                     <field name="state" widget="statusbar" statusbar_visible="draft,scanning,physical_count,pending_review,reconciled"/>
                 </header>
                 <sheet>
@@ -122,6 +123,10 @@
                         then <strong>Submit for Review</strong> — the section always moves to
                         <strong>Pending Review</strong>, where the auditor sees any variance and
                         reconciles via <strong>Review &amp; Reconcile</strong>.
+                    </div>
+                    <div class="alert alert-warning" role="status" invisible="state != 'pending_review' or session_all_submitted">
+                        Waiting for the rest of the session — <strong>Review &amp; Reconcile</strong>
+                        unlocks once every section has been submitted for review.
                     </div>
                     <group>
                         <group>

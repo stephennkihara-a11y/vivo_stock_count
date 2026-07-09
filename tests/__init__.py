@@ -10,3 +10,4 @@ from . import test_reports
 from . import test_counted_split
 from . import test_section_review
 from . import test_count_mode
+from . import test_session_review_gate

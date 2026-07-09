@@ -38,7 +38,7 @@
                             </thead>
                             <tbody>
                                 <t t-foreach="doc.section_ids" t-as="s">
-                                    <tr t-attf-style="#{'background-color:#e8f5e9;' if s.state == 'reconciled' else ('background-color:#fdecea;' if s.state == 'variance_rescan' else '')}">
+                                    <tr t-attf-style="#{'background-color:#e8f5e9;' if s.state == 'reconciled' else ('background-color:#fdecea;' if s.state == 'pending_review' else '')}">
                                         <td><span t-field="s.zone_id"/></td>
                                         <td><span t-field="s.name"/></td>
                                         <td><span t-field="s.scanner_id"/></td>

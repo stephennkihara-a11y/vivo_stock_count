@@ -120,14 +120,20 @@ class VivoCountCommon(TransactionCase):
         session.action_start()
         return session.section_ids
 
-    def _reconcile_section(self, section, scanner, physical, scan_qty, physical_qty=None):
+    def _submit_section_for_review(self, section, scanner, physical, scan_qty, physical_qty=None):
+        """Scan one line, finish, submit the physical count -> pending_review.
+
+        Every submit routes to ``pending_review`` now that the Variance
+        Re-scan/auto-close shortcut is gone; the auditor reconciles separately.
+        (Named distinctly from ``TestSectionReview._submit_section`` to avoid a
+        method-override collision in that subclass.)
+        """
         if physical_qty is None:
             physical_qty = scan_qty
         section.scanner_id = scanner.id
         section.with_user(scanner).action_start_scanning()
         # Seed a single line directly (mobile-app behaviour comes in Phase 3).
-        # system_qty == counted_qty, so there is no genuine variance and the
-        # section auto-reconciles on match (no pending_review).
+        # system_qty == counted_qty, so there is no genuine per-line variance.
         self.Line.create(
             {
                 "section_id": section.id,
@@ -140,6 +146,17 @@ class VivoCountCommon(TransactionCase):
         section.with_user(scanner).action_finish_scanning()
         section.physical_counter_id = physical.id
         section.with_user(physical).action_submit_physical_count(physical_qty=physical_qty)
+        return section
+
+    def _reconcile_section(self, section, scanner, physical, scan_qty, physical_qty=None):
+        """Take a section all the way to ``reconciled``.
+
+        Submit the physical count (-> pending_review) then auditor-confirm.
+        With the auto-close-on-match shortcut removed, reconciliation is always
+        an explicit auditor step.
+        """
+        self._submit_section_for_review(section, scanner, physical, scan_qty, physical_qty)
+        section.action_confirm_reconcile()
         return section
 
     def _confirm_section_review(self, section, user=None):

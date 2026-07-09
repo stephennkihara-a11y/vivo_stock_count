@@ -106,6 +106,16 @@ class VivoCountSession(models.Model):
     sections_total = fields.Integer(compute="_compute_section_counts", store=True)
     sections_reconciled = fields.Integer(compute="_compute_section_counts", store=True)
     sections_outstanding = fields.Integer(compute="_compute_section_counts", store=True)
+    sections_submitted = fields.Integer(
+        compute="_compute_section_counts", store=True,
+        help="Sections submitted for review (pending_review or reconciled).",
+    )
+    all_submitted_for_review = fields.Boolean(
+        compute="_compute_section_counts", store=True,
+        help="True once every section has been submitted for review (none is "
+             "still in draft/scanning/physical_count). The auditor can only "
+             "reconcile sections once the whole session is submitted.",
+    )
 
     scheduled_date = fields.Datetime(default=fields.Datetime.now, tracking=True)
     start_date = fields.Datetime(readonly=True, copy=False)
@@ -173,6 +183,12 @@ class VivoCountSession(models.Model):
             session.sections_total = len(sections)
             session.sections_reconciled = sum(1 for s in sections if s.state == "reconciled")
             session.sections_outstanding = session.sections_total - session.sections_reconciled
+            session.sections_submitted = sum(
+                1 for s in sections if s.state in ("pending_review", "reconciled")
+            )
+            session.all_submitted_for_review = bool(sections) and all(
+                s.state in ("pending_review", "reconciled") for s in sections
+            )
 
     @api.depends(
         "line_ids.counted_qty",

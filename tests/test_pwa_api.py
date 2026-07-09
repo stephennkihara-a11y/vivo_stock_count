@@ -173,13 +173,14 @@ class TestPwaApi(VivoCountCommon):
             section.with_user(self.physical)
             .submit_physical_pwa(physical_qty=5, idempotency_key="phys-1")
         )
-        self.assertEqual(first["state"], "reconciled")
+        # Submit always routes to pending_review now (no auto-close on match).
+        self.assertEqual(first["state"], "pending_review")
         replay = (
             section.with_user(self.physical)
             .submit_physical_pwa(physical_qty=5, idempotency_key="phys-1")
         )
         self.assertTrue(replay["idempotent"])
-        self.assertEqual(replay["state"], "reconciled")
+        self.assertEqual(replay["state"], "pending_review")
         # rescan_count not bumped by replay
         self.assertEqual(section.rescan_count, 0)
 

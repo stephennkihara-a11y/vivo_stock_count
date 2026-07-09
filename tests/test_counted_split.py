@@ -57,6 +57,9 @@ class TestCountedSplit(VivoCountCommon):
         section.with_user(self.scanner).action_finish_scanning()
         section.physical_counter_id = self.physical.id
         section.with_user(self.physical).action_submit_physical_count(physical_qty=5)
+        # Submit routes to pending_review; the auditor confirms (no auto-close).
+        self.assertEqual(section.state, "pending_review")
+        section.action_confirm_reconcile()
         self.assertEqual(section.state, "reconciled")
 
         # Reconcile the remaining section so the session can advance.
@@ -134,6 +137,9 @@ class TestCountedSplit(VivoCountCommon):
         section.with_user(self.physical).physical_total_qty = 6.0
         # ...then clicks Submit Physical Count (no qty passed).
         section.with_user(self.physical).action_submit_physical_count()
+        # Submit routes to pending_review; the auditor then reconciles.
+        self.assertEqual(section.state, "pending_review")
+        section.action_confirm_reconcile()
         self.assertEqual(section.state, "reconciled")
         self.assertTrue(section.is_reconciled)
 

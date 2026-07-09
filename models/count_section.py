@@ -29,6 +29,12 @@ class VivoCountSection(models.Model):
 
     state = fields.Selection(SECTION_STATES, default="draft", required=True, copy=False)
 
+    # The auditor may only reconcile a section once the whole session has been
+    # submitted for review — surfaced here for the section form's button.
+    session_all_submitted = fields.Boolean(
+        related="session_id.all_submitted_for_review", readonly=True
+    )
+
     scanner_id = fields.Many2one("res.users", string="Scanner")
     physical_counter_id = fields.Many2one("res.users", string="Physical Counter")
 
@@ -393,6 +399,14 @@ class VivoCountSection(models.Model):
         self.ensure_one()
         if self.state != "pending_review":
             raise UserError(_("Section %s is not pending review.") % self.name)
+        if not self.session_id.all_submitted_for_review:
+            raise UserError(
+                _(
+                    "Review & Reconcile is available only once every section in "
+                    "%s has been submitted for review."
+                )
+                % self.session_id.name
+            )
         return {
             "type": "ir.actions.act_window",
             "name": _("Review & Reconcile — %s") % self.name,

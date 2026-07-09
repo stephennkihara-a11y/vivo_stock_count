@@ -118,6 +118,13 @@ class TestConcurrentScanning(VivoCountCommon):
         s1.with_user(self.physical1).submit_physical_pwa(physical_qty=10)
         s2.with_user(self.physical2).submit_physical_pwa(physical_qty=10)
         s3.with_user(self.physical1).submit_physical_pwa(physical_qty=10)
+        # Submit routes each section to pending_review (no auto-close); the
+        # auditor then confirms each independently.
+        self.assertEqual(s1.state, "pending_review")
+        self.assertEqual(s2.state, "pending_review")
+        self.assertEqual(s3.state, "pending_review")
+        for sec in (s1, s2, s3):
+            sec.action_confirm_reconcile()
         self.assertEqual(s1.state, "reconciled")
         self.assertEqual(s2.state, "reconciled")
         self.assertEqual(s3.state, "reconciled")
