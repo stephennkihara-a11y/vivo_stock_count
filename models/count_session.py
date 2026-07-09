@@ -639,8 +639,25 @@ class VivoCountSession(models.Model):
             ready._reconcile_sections(review_note=note, reconciled_by=self.env.user)
             if outstanding:
                 outstanding.write({"state": "excluded"})
+            # Stamp the auditor who actually reviewed/reconciled as the reviewer
+            # (guaranteed != scanner by _check_reviewer_not_scanner above). This
+            # is where reviewer_id is set — NOT on submit, which the scanner
+            # performs, so the field never silently defaults to the scanner.
+            session.reviewer_id = self.env.user.id
             session._maybe_auto_advance_to_counted()
         return True
+
+    def action_open_reconcile_wizard(self):
+        """Open the store reconcile wizard for the auditor (review state)."""
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Reconcile Store — %s") % self.name,
+            "res_model": "vivo.count.session.reconcile.wizard",
+            "view_mode": "form",
+            "target": "new",
+            "context": {"default_session_id": self.id},
+        }
 
     def action_submit_for_review(self):
         """in_progress -> review: the scanner's HANDOFF to the auditor.
@@ -677,12 +694,11 @@ class VivoCountSession(models.Model):
                         "racks": ", ".join(outstanding.mapped("name")),
                     }
                 )
-            session.write(
-                {
-                    "state": "review",
-                    "reviewer_id": session.reviewer_id.id or self.env.user.id,
-                }
-            )
+            # Do NOT auto-set reviewer_id here: submit is performed by the
+            # scanner, so defaulting reviewer to the acting user would wrongly
+            # stamp the scanner as reviewer. reviewer_id is left blank until the
+            # auditor engages (set in action_reconcile_session).
+            session.write({"state": "review"})
         return True
 
     def action_bounce_sections(self, section_ids):

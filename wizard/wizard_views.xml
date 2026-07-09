@@ -1,6 +1,54 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
+    <!-- Store reconcile wizard — the auditor's Scanned -> Reconciled action -->
+    <record id="view_vivo_session_reconcile_wizard_form" model="ir.ui.view">
+        <field name="name">vivo.count.session.reconcile.wizard.form</field>
+        <field name="model">vivo.count.session.reconcile.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Reconcile Store">
+                <sheet>
+                    <div class="oe_title">
+                        <h2>Reconcile store <field name="session_name" readonly="1" class="oe_inline"/></h2>
+                    </div>
+                    <field name="currency_id" invisible="1"/>
+                    <div class="alert alert-info" role="status">
+                        Reconcile every scanned rack in one pass. The scanner has finished
+                        counting; as the auditor you record the variance/review note below and
+                        confirm. Racks the scanner never finished are <strong>left out and
+                        flagged</strong>, not reconciled. You must be a different user than the
+                        scanner.
+                    </div>
+                    <group>
+                        <group>
+                            <field name="sections_total"/>
+                            <field name="sections_ready" string="To reconcile now"/>
+                            <field name="sections_unfinished" string="Left out (unfinished)"/>
+                        </group>
+                        <group>
+                            <field name="variance_value" widget="monetary"/>
+                            <field name="unfinished_names" string="Unfinished racks"
+                                   invisible="sections_unfinished == 0"/>
+                        </group>
+                    </group>
+                    <div class="alert alert-warning" role="status" invisible="sections_unfinished == 0">
+                        <strong><field name="sections_unfinished" class="oe_inline"/></strong>
+                        rack(s) are not finished and will be LEFT OUT of this reconcile
+                        (excluded, not counted): <field name="unfinished_names" class="oe_inline"/>.
+                    </div>
+                    <group>
+                        <field name="review_note" required="1"
+                               placeholder="Mandatory: what the counts show and why you are reconciling."/>
+                    </group>
+                </sheet>
+                <footer>
+                    <button name="action_confirm" type="object" string="Reconcile Store" class="btn-primary"/>
+                    <button string="Cancel" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
     <!-- Approval preview wizard -->
     <record id="view_vivo_approval_wizard_form" model="ir.ui.view">
         <field name="name">vivo.count.approval.wizard.form</field>

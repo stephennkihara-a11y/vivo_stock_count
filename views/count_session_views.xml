@@ -119,8 +119,10 @@
                 <header>
                     <button name="action_start" string="Start Count" type="object" class="btn-primary" invisible="state != 'draft'"/>
                     <button name="action_submit_for_review" string="Submit for Review" type="object" class="btn-primary" invisible="state not in ('in_progress','counted')"/>
-                    <button name="action_open_approval_wizard" string="Review &amp; Approve" type="object" class="btn-primary" invisible="state != 'review'"/>
+                    <button name="action_open_reconcile_wizard" string="Reconcile Store" type="object" class="btn-primary" invisible="state != 'review' or sections_outstanding == 0"/>
+                    <button name="action_open_approval_wizard" string="Review &amp; Approve" type="object" class="btn-primary" invisible="state != 'review' or sections_outstanding != 0"/>
                     <button name="action_open_bounce_wizard" string="Bounce Sections" type="object" invisible="state != 'review'"/>
+                    <field name="sections_outstanding" invisible="1"/>
                     <button name="action_apply" string="Post to Inventory" type="object" class="btn-primary" invisible="state != 'approved'"/>
                     <button name="action_cancel" string="Cancel" type="object" invisible="state in ('applied','cancelled')"/>
                     <button name="action_reset_to_draft" string="Reset to Draft" type="object" invisible="state != 'cancelled'"/>
@@ -236,5 +238,18 @@
         <field name="view_mode">kanban,list,form</field>
         <field name="search_view_id" ref="view_vivo_count_session_search"/>
         <field name="context">{"search_default_filter_open": 1}</field>
+    </record>
+
+    <!-- Auditor queue: every session submitted and awaiting review/reconcile. -->
+    <record id="action_vivo_count_session_review" model="ir.actions.act_window">
+        <field name="name">Awaiting Review</field>
+        <field name="res_model">vivo.count.session</field>
+        <field name="view_mode">list,kanban,form</field>
+        <field name="search_view_id" ref="view_vivo_count_session_search"/>
+        <field name="context">{"search_default_filter_review": 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiley_face">No sessions awaiting review.</p>
+            <p>Sessions a scanner has submitted appear here for the auditor to reconcile, approve and post.</p>
+        </field>
     </record>
 </odoo>
