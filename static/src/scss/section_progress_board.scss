@@ -42,12 +42,6 @@
             background: #fff3e0;
         }
 
-        // red — variance_rescan
-        &.state_variance_rescan {
-            border-left-color: #dc3545;
-            background: #fdecea;
-        }
-
         // blue — pending_review (awaiting auditor sign-off)
         &.state_pending_review {
             border-left-color: #0d6efd;

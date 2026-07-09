@@ -145,7 +145,6 @@ const STATE_LABELS = {
     draft: 'Not started',
     scanning: 'Scanning',
     physical_count: 'Awaiting physical',
-    variance_rescan: 'Variance re-scan',
     reconciled: 'Reconciled',
 };
 

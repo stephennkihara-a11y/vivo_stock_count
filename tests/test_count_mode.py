@@ -106,21 +106,18 @@ class TestCountMode(VivoCountCommon):
         self.assertEqual(line.system_qty, 0.0)
         self.assertTrue(line.is_unexpected)
 
-    def test_mismatch_escalates_to_pending_review_in_quick_mode(self):
-        """The scan/physical auditor path is mode-independent."""
+    def test_submit_goes_to_pending_review_in_quick_mode(self):
+        """Submit always routes to pending_review, mode-independent — a
+        mismatch no longer loops through Variance Re-scan."""
         self._seed_onhand(self.product_a, 5)
         session = self._quick_session_started()
         section = self._open_section(session)
-        self._scan(section, self.product_a, 5, "k1")  # scan_total 5, system 5 (no per-line variance)
+        self._scan(section, self.product_a, 5, "k1")
         section.with_user(self.scanner).action_finish_scanning()
         section.physical_counter_id = self.physical.id
         section.with_user(self.physical).action_submit_physical_count(physical_qty=3)
-        self.assertEqual(section.state, "variance_rescan")
-        # Re-scan, still disagree -> escalate (default threshold 1).
-        section.with_user(self.scanner).action_start_scanning()
-        section.with_user(self.scanner).action_finish_scanning()
-        section.with_user(self.physical).action_submit_physical_count(physical_qty=3)
         self.assertEqual(section.state, "pending_review")
+        self.assertEqual(section.rescan_count, 0)
 
     def test_uncounted_rollup_is_na_in_quick_mode(self):
         self._seed_onhand(self.product_a, 10)

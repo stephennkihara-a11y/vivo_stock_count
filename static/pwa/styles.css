@@ -80,7 +80,6 @@ h3 { margin: 0; color: var(--muted); font-size: 1em; }
 .row.state-draft       { border-left: 6px solid var(--gray); }
 .row.state-scanning    { border-left: 6px solid var(--amber); }
 .row.state-physical_count { border-left: 6px solid var(--orange); }
-.row.state-variance_rescan { border-left: 6px solid var(--red); background: #fdecea; }
 .row.state-reconciled  { border-left: 6px solid var(--green); background: #f0faf4; }
 
 .empty { color: var(--muted); text-align: center; padding: 24px; }

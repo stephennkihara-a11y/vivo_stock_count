@@ -156,7 +156,7 @@ class VivoCountLine(models.Model):
         section = Section.browse(section_id).exists()
         if not section:
             raise ValidationError(_("Section not found."))
-        if section.state not in {"scanning", "variance_rescan"}:
+        if section.state != "scanning":
             raise ValidationError(
                 _("Section %s is not open for scanning (state: %s).")
                 % (section.name, section.state)
@@ -180,7 +180,9 @@ class VivoCountLine(models.Model):
             [("section_id", "=", section.id), ("product_id", "=", product.id)],
             limit=1,
         )
-        scan_type = "rescan" if section.state == "variance_rescan" else "initial"
+        # A section re-opened for scanning after a manager bounce carries
+        # rescan_count > 0; its scans are logged as re-scans for the audit trail.
+        scan_type = "rescan" if section.rescan_count else "initial"
         if not line:
             # In snapshot mode the SKU already has a snapshot line elsewhere
             # (the catch-all section); a rack line starts at system_qty 0. In

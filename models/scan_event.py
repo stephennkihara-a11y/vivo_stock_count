@@ -13,9 +13,9 @@ class VivoCountScanEvent(models.Model):
     """Append-only scan log.
 
     Per A6: `initial` = first scan of the SKU in this section in its current
-    state; `rescan` = scan logged after the section was bounced to
-    `variance_rescan` or bounced from review; `correction` = scanner manually
-    amends qty on an existing line before finishing scanning.
+    state; `rescan` = scan logged after the section was bounced from review
+    (rescan_count > 0); `correction` = scanner manually amends qty on an
+    existing line before finishing scanning.
 
     These records are never deleted and never edited. They are the audit
     trail referenced by Section 11 AC #10.

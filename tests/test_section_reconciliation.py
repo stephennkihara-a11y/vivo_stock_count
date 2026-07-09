@@ -22,8 +22,9 @@ class TestSectionReconciliation(VivoCountCommon):
         self.assertTrue(section.is_reconciled)
         self.assertTrue(section.reconciled_at)
 
-    def test_section_bounces_to_rescan_on_mismatch(self):
-        """AC #2 negative + AC #5 re-scan loop."""
+    def test_mismatch_goes_to_pending_review(self):
+        """A scan-vs-physical mismatch no longer loops — it goes straight to
+        pending_review for the auditor (no Variance Re-scan)."""
         session = self._new_session()
         sections = self._start_and_get_sections(session)
         section = sections[0]
@@ -41,13 +42,8 @@ class TestSectionReconciliation(VivoCountCommon):
         section.with_user(self.scanner).action_finish_scanning()
         section.physical_counter_id = self.physical.id
         section.with_user(self.physical).action_submit_physical_count(physical_qty=4)
-        self.assertEqual(section.state, "variance_rescan")
-        self.assertEqual(section.rescan_count, 1)
-        # Loop: re-scan and reconcile.
-        section.with_user(self.scanner).action_start_scanning()
-        section.with_user(self.scanner).action_finish_scanning()
-        section.with_user(self.physical).action_submit_physical_count(physical_qty=5)
-        self.assertEqual(section.state, "reconciled")
+        self.assertEqual(section.state, "pending_review")
+        self.assertEqual(section.physical_total_qty, 4)
 
     def test_segregation_of_duties_on_section(self):
         """AC #3: scanner and physical counter cannot be the same user."""
@@ -138,18 +134,13 @@ class TestSectionReconciliation(VivoCountCommon):
         section.action_confirm_reconcile()
         self.assertEqual(section.state, "reconciled")
 
-    def test_rescan_count_tracks_loops(self):
-        # This test exercises multiple re-scan loops before resolving. Raise
-        # the escalation threshold so the loops are not diverted to auditor
-        # review (see test_section_review for the escalation behaviour itself).
-        self.env["ir.config_parameter"].sudo().set_param(
-            "vivo_count.rescan_review_threshold", "5"
-        )
+    def test_submit_does_not_loop_or_increment_rescan(self):
+        """Submitting a mismatch no longer loops or bumps rescan_count — it goes
+        straight to pending_review (Variance Re-scan removed). The only way back
+        to scanning is a manager bounce from review."""
         session = self._new_session()
-        sections = self._start_and_get_sections(session)
-        section = sections[0]
+        section = self._start_and_get_sections(session)[0]
         section.scanner_id = self.scanner.id
-        # Loop 1
         section.with_user(self.scanner).action_start_scanning()
         self.Line.create(
             {
@@ -163,15 +154,7 @@ class TestSectionReconciliation(VivoCountCommon):
         section.with_user(self.scanner).action_finish_scanning()
         section.physical_counter_id = self.physical.id
         section.with_user(self.physical).action_submit_physical_count(physical_qty=3)
-        self.assertEqual(section.rescan_count, 1)
-        # Loop 2
-        section.with_user(self.scanner).action_start_scanning()
-        section.with_user(self.scanner).action_finish_scanning()
-        section.with_user(self.physical).action_submit_physical_count(physical_qty=2)
-        self.assertEqual(section.rescan_count, 2)
-        # Resolve
-        section.with_user(self.scanner).action_start_scanning()
-        section.with_user(self.scanner).action_finish_scanning()
-        section.with_user(self.physical).action_submit_physical_count(physical_qty=5)
-        self.assertEqual(section.state, "reconciled")
-        self.assertEqual(section.rescan_count, 2)
+        self.assertEqual(section.state, "pending_review")
+        self.assertEqual(section.rescan_count, 0)
+        with self.assertRaises(UserError):
+            section.with_user(self.scanner).action_start_scanning()

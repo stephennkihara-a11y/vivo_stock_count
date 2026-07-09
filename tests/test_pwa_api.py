@@ -183,7 +183,7 @@ class TestPwaApi(VivoCountCommon):
         # rescan_count not bumped by replay
         self.assertEqual(section.rescan_count, 0)
 
-    def test_physical_submit_mismatch_routes_to_rescan(self):
+    def test_physical_submit_mismatch_routes_to_pending_review(self):
         session = self._new_session()
         section = self._start_and_get_sections(session)[0]
         section.with_user(self.scanner).open_for_scanning()
@@ -198,5 +198,5 @@ class TestPwaApi(VivoCountCommon):
             section.with_user(self.physical)
             .submit_physical_pwa(physical_qty=4, idempotency_key="phys-mm")
         )
-        self.assertEqual(r["state"], "variance_rescan")
-        self.assertEqual(section.rescan_count, 1)
+        self.assertEqual(r["state"], "pending_review")
+        self.assertEqual(section.rescan_count, 0)

@@ -6,7 +6,6 @@ SECTION_STATES = [
     ("draft", "Draft"),
     ("scanning", "Scanning"),
     ("physical_count", "Physical Count"),
-    ("variance_rescan", "Variance Re-scan"),
     ("pending_review", "Pending Review"),
     ("reconciled", "Reconciled"),
 ]
@@ -181,9 +180,9 @@ class VivoCountSection(models.Model):
     # State machine
     # ------------------------------------------------------------------
     def action_start_scanning(self):
-        """draft -> scanning (or variance_rescan -> scanning)."""
+        """draft -> scanning."""
         for section in self:
-            if section.state not in {"draft", "variance_rescan"}:
+            if section.state != "draft":
                 raise UserError(
                     _("Section %s is in state %s; cannot start scanning.")
                     % (section.name, section.state)
@@ -212,14 +211,12 @@ class VivoCountSection(models.Model):
         return True
 
     def action_submit_physical_count(self, physical_qty=None):
-        """physical_count -> pending_review | reconciled | variance_rescan.
+        """physical_count -> pending_review (always).
 
-        On a scan-vs-physical match the section routes to `pending_review`
-        for auditor sign-off (see `action_confirm_reconcile`). If the
-        `vivo_count.auto_close_zero_variance` toggle is on (default) and the
-        section carries no genuine variance to audit, it reconciles
-        automatically, skipping the review step. A mismatch still routes to
-        `variance_rescan` unchanged.
+        The physical counter submits their headcount and the section always
+        goes to Pending Review — regardless of whether it matches the scan
+        total. Any variance is surfaced to the auditor at the review stage;
+        there is no automatic re-scan loop and no auto-close on match.
 
         Required-different-user enforced by `_check_segregation_of_duties`.
         """
@@ -232,35 +229,8 @@ class VivoCountSection(models.Model):
                 section.physical_counter_id = self.env.user
             if physical_qty is not None:
                 section.physical_total_qty = physical_qty
-            if section.scan_total_qty == section.physical_total_qty:
-                if (
-                    section._auto_close_zero_variance_enabled()
-                    and not section._review_variance_lines()
-                ):
-                    # No genuine variance -> reconcile automatically (no auditor).
-                    section._do_reconcile(reconciled_by=False)
-                else:
-                    # Genuine variance -> hold for auditor review.
-                    section.write({"state": "pending_review"})
-            else:
-                # Scan and physical disagree. Allow a bounded re-scan loop, but
-                # a persistent disagreement must not loop forever nor auto-
-                # reconcile — after the threshold it escalates to the auditor.
-                new_rescan = section.rescan_count + 1
-                if new_rescan > section._rescan_review_threshold():
-                    section.write({"state": "pending_review", "rescan_count": new_rescan})
-                else:
-                    section.write({"state": "variance_rescan", "rescan_count": new_rescan})
+            section.write({"state": "pending_review"})
         return True
-
-    def _rescan_review_threshold(self):
-        val = self.env["ir.config_parameter"].sudo().get_param(
-            "vivo_count.rescan_review_threshold", "1"
-        )
-        try:
-            return int(val)
-        except (TypeError, ValueError):
-            return 1
 
     # ------------------------------------------------------------------
     # Auditor-confirmed reconciliation
@@ -539,7 +509,7 @@ class VivoCountSection(models.Model):
         """
         self.ensure_one()
         self.acquire_lock()
-        if self.state in {"draft", "variance_rescan"}:
+        if self.state == "draft":
             self.action_start_scanning()
         elif self.state == "scanning":
             # Already scanning, ensure scanner_id is current.
