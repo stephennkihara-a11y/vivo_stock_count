@@ -358,43 +358,15 @@ class VivoCountSection(models.Model):
         return True
 
     def _check_counted_variance_reasons(self):
-        """Every counted line with a variance needs a reason (and a note when
-        the reason is 'Other') before the section can be reconciled."""
-        self.ensure_one()
-        counted = self.line_ids.filtered(lambda l: l.line_status == "counted")
-        # Only lines with a real system baseline (system_qty set) can carry a
-        # section-level variance to reason for. Pure PWA rack scans have
-        # system_qty 0 (the snapshot lives in the catch-all section), so they
-        # are not treated as per-line variances here — consistent with
-        # `_review_variance_lines`.
-        missing = counted.filtered(
-            lambda l: l.system_qty and l.difference != 0.0 and not l.variance_reason
-        )
-        if missing:
-            raise ValidationError(
-                _(
-                    "Section %(name)s cannot be reconciled — these counted lines "
-                    "have a variance but no reason: %(lines)s"
-                )
-                % {
-                    "name": self.name,
-                    "lines": ", ".join(missing.mapped("product_id.display_name")),
-                }
-            )
-        bad_other = counted.filtered(
-            lambda l: l.variance_reason == "other" and not l.variance_note
-        )
-        if bad_other:
-            raise ValidationError(
-                _(
-                    "Section %(name)s: lines with reason 'Other' need a note: "
-                    "%(lines)s"
-                )
-                % {
-                    "name": self.name,
-                    "lines": ", ".join(bad_other.mapped("product_id.display_name")),
-                }
-            )
+        """Per-line variance reasons/notes are OPTIONAL and never block reconcile.
+
+        The old requirement (every counted variance line needs a reason, and a
+        note for reason 'Other') has been removed. The fields stay visible and
+        fillable, just not mandatory. The mandatory store-level reviewer note is
+        a separate control enforced in ``_reconcile_sections`` — that gate is
+        unchanged. Kept as a no-op so the reconcile call site is stable.
+        """
+        return
 
     def _check_auditor_band(self):
         """Raise unless the current user is a manager/auditor band.

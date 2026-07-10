@@ -74,11 +74,7 @@ class VivoCountApprovalWizard(models.TransientModel):
                     _("%d section(s) still unreconciled.")
                     % session.sections_outstanding
                 )
-            if session.unreasoned_line_count:
-                messages.append(
-                    _("%d variance line(s) have no reason recorded.")
-                    % session.unreasoned_line_count
-                )
+            # Per-line variance reasons are optional and do NOT block approval.
 
             # Band authority
             band = session.tolerance_band
