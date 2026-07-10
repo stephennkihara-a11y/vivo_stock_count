@@ -40,6 +40,7 @@ Phase 1 scope:
         "views/count_session_views.xml",
         "views/count_section_views.xml",
         "views/count_line_views.xml",
+        "views/recon_report_views.xml",
         "views/scan_event_views.xml",
         "views/reconciliation_views.xml",
         "views/res_config_settings_views.xml",

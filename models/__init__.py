@@ -3,6 +3,7 @@ from . import count_section_template
 from . import count_session
 from . import count_section
 from . import count_line
+from . import recon_report
 from . import scan_event
 from . import reconciliation
 from . import res_config_settings
