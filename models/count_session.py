@@ -704,32 +704,15 @@ class VivoCountSession(models.Model):
         return True
 
     def _check_variance_reasons(self):
-        """AC #11: every line with non-zero difference needs a reason."""
-        self.ensure_one()
-        # Only counted lines (scanned on the rack) need a variance reason.
-        # "Not counted here" lines are pending on other racks, not shrinkage,
-        # so they must not block approval — a genuine shortage (an SKU counted
-        # nowhere in the session) is surfaced separately via the uncounted-SKU
-        # rollup, not as a per-line reason.
-        missing = self.line_ids.filtered(
-            lambda l: l.section_id.state == "reconciled"
-            and l.line_status == "counted"
-            and l.difference != 0.0
-            and not l.variance_reason
-        )
-        if missing:
-            raise UserError(
-                _("These lines have a variance but no reason: %s")
-                % ", ".join(missing.mapped("product_id.display_name"))
-            )
-        bad_other = self.line_ids.filtered(
-            lambda l: l.variance_reason == "other" and not l.variance_note
-        )
-        if bad_other:
-            raise UserError(
-                _("Lines with reason 'Other' need a free-text note: %s")
-                % ", ".join(bad_other.mapped("product_id.display_name"))
-            )
+        """Per-line variance reasons/notes are OPTIONAL and never block approval.
+
+        Previously every counted variance line needed a reason (and a note for
+        reason 'Other'); that per-line enforcement has been removed. The fields
+        remain visible and fillable, just not mandatory. The store-level
+        reviewer note (`review_note`) is a separate control that still applies at
+        reconcile. Kept as a no-op so the ``action_approve`` call site is stable.
+        """
+        return
 
     def action_approve(self):
         """review -> approved. Routing checks (AC #7) live here."""

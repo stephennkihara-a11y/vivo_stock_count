@@ -213,7 +213,7 @@
                                     <field name="counted_qty"/>
                                     <field name="difference" decoration-danger="difference &lt; 0" decoration-success="difference &gt; 0"/>
                                     <field name="variance_value"/>
-                                    <field name="variance_reason" required="difference != 0"/>
+                                    <field name="variance_reason"/>
                                     <field name="variance_note"/>
                                     <field name="line_status" column_invisible="1"/>
                                     <field name="currency_id" column_invisible="1"/>
