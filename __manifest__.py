@@ -1,6 +1,6 @@
 {
     "name": "Vivo Stock Count",
-    "version": "18.0.1.7.0",
+    "version": "18.0.1.8.0",
     "summary": "Retail stock count workflow for Vivo Fashion Group — rack-section dual-verification, staged approval, auto-reconciliation",
     "description": """
 Vivo Stock Count (SPEC-ODOO-001)
@@ -40,6 +40,7 @@ Phase 1 scope:
         "views/count_session_views.xml",
         "views/count_section_views.xml",
         "views/count_line_views.xml",
+        "views/recon_report_views.xml",
         "views/scan_event_views.xml",
         "views/reconciliation_views.xml",
         "views/res_config_settings_views.xml",

@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Search: Counted / Not Counted toggle (default Counted) + lookups -->
+    <record id="view_vivo_recon_report_search" model="ir.ui.view">
+        <field name="name">vivo.count.recon.report.search</field>
+        <field name="model">vivo.count.recon.report</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="product_id"/>
+                <field name="product_title"/>
+                <field name="barcode"/>
+                <field name="session_id"/>
+                <filter name="filter_counted" string="Counted" domain="[('counted_qty', '&gt;', 0)]"/>
+                <filter name="filter_not_counted" string="Not Counted" domain="[('counted_qty', '&lt;=', 0)]"/>
+                <separator/>
+                <filter name="filter_variance" string="Has Variance" domain="[('variance', '!=', 0)]"/>
+                <group string="Group By">
+                    <filter name="group_session" string="Session" context="{'group_by': 'session_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Merged list: grain = (session x product). Read-only. -->
+    <record id="view_vivo_recon_report_list" model="ir.ui.view">
+        <field name="name">vivo.count.recon.report.list</field>
+        <field name="model">vivo.count.recon.report</field>
+        <field name="arch" type="xml">
+            <list string="Recon Report" create="false" edit="false" delete="false"
+                  decoration-muted="not counted">
+                <field name="product_id"/>
+                <field name="product_title"/>
+                <field name="barcode"/>
+                <field name="system_qty"/>
+                <field name="counted_qty"/>
+                <field name="variance" decoration-danger="variance &lt; 0" decoration-success="variance &gt; 0"/>
+                <field name="price"/>
+                <field name="rack_count"/>
+                <field name="counted" column_invisible="1"/>
+                <field name="session_id" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Form: read-only, with the per-rack drill-down embedded list. -->
+    <record id="view_vivo_recon_report_form" model="ir.ui.view">
+        <field name="name">vivo.count.recon.report.form</field>
+        <field name="model">vivo.count.recon.report</field>
+        <field name="arch" type="xml">
+            <form string="Recon Report" create="false" edit="false">
+                <sheet>
+                    <div class="oe_title">
+                        <h2><field name="product_id" readonly="1"/></h2>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="product_title"/>
+                            <field name="barcode"/>
+                            <field name="price"/>
+                            <field name="session_id"/>
+                        </group>
+                        <group>
+                            <field name="system_qty"/>
+                            <field name="counted_qty"/>
+                            <field name="variance"/>
+                            <field name="rack_count"/>
+                            <field name="counted"/>
+                        </group>
+                    </group>
+                    <separator string="Per-Rack Breakdown"/>
+                    <field name="line_ids" readonly="1">
+                        <list string="Per-Rack Breakdown" create="false" edit="false" delete="false">
+                            <field name="section_id"/>
+                            <field name="counted_qty"/>
+                        </list>
+                    </field>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_vivo_recon_report" model="ir.actions.act_window">
+        <field name="name">Recon Report</field>
+        <field name="res_model">vivo.count.recon.report</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_vivo_recon_report_search"/>
+        <field name="context">{'search_default_filter_counted': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiley_face">No merged count data yet.</p>
+            <p>This report merges scanned data across every rack submitted for review, one row per SKU.</p>
+        </field>
+    </record>
+
+</odoo>

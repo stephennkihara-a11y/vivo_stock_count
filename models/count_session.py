@@ -1031,6 +1031,19 @@ class VivoCountSession(models.Model):
             "context": {"search_default_group_zone": 1},
         }
 
+    def action_open_recon_report(self):
+        """Open the session-level recon report (merged per SKU across submitted
+        racks) filtered to this session, defaulting to the Counted view."""
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Recon Report — %s") % self.name,
+            "res_model": "vivo.count.recon.report",
+            "view_mode": "list,form",
+            "domain": [("session_id", "=", self.id)],
+            "context": {"search_default_filter_counted": 1},
+        }
+
     def action_open_approval_wizard(self):
         """Open the approval preview wizard — blockers + band + line summary."""
         self.ensure_one()

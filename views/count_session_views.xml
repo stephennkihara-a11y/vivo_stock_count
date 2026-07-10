@@ -124,6 +124,7 @@
                     <button name="action_apply" string="Post to Inventory" type="object" class="btn-primary" invisible="state != 'approved'"/>
                     <button name="action_cancel" string="Cancel" type="object" invisible="state in ('applied','cancelled')"/>
                     <button name="action_reset_to_draft" string="Reset to Draft" type="object" invisible="state != 'cancelled'"/>
+                    <button name="action_open_recon_report" string="Recon Report" type="object" invisible="state == 'draft'"/>
                     <field name="state" widget="statusbar" statusbar_visible="draft,in_progress,counted,review,approved,applied"/>
                 </header>
                 <sheet>
