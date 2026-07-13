@@ -161,3 +161,30 @@ class TestReconReport(TransactionCase):
         self.assertFalse(row.counted)
         self.assertEqual(row.variance, -7.0)
         self.assertEqual(row.rack_count, 0)
+
+    def test_rack_breakdown_lists_each_rack(self):
+        """rack_breakdown summarises where the SKU was counted and how much."""
+        session = self._session()
+        rack_a = self._section(session, "Rack A")
+        rack_b = self._section(session, "Rack B")
+        rack_c = self._section(session, "Rack C")
+        self._line(rack_a, system=10.0, counted=2.0)
+        self._line(rack_b, system=10.0, counted=4.0)
+        self._line(rack_c, system=10.0, counted=1.0)
+
+        row = self._row(session)
+        self.assertEqual(len(row), 1)
+        self.assertIn("Rack A: 2", row.rack_breakdown)
+        self.assertIn("Rack B: 4", row.rack_breakdown)
+        self.assertIn("Rack C: 1", row.rack_breakdown)
+        # Whole numbers carry no trailing decimals; order stable by section.
+        self.assertEqual(row.rack_breakdown, "Rack A: 2, Rack B: 4, Rack C: 1")
+
+    def test_rack_breakdown_formats_fractional_qty(self):
+        """Fractional counted qty keeps one decimal; whole numbers do not."""
+        session = self._session()
+        rack_a = self._section(session, "Rack A")
+        self._line(rack_a, system=10.0, counted=2.5)
+
+        row = self._row(session)
+        self.assertEqual(row.rack_breakdown, "Rack A: 2.5")

@@ -64,6 +64,11 @@ class VivoCountReconReport(models.Model):
         compute="_compute_line_ids",
         string="Per-Rack Breakdown",
     )
+    # Same information as a one-line summary, e.g. "Rack A: 2, Rack B: 4".
+    rack_breakdown = fields.Char(
+        string="Per-Rack Breakdown",
+        compute="_compute_rack_breakdown",
+    )
 
     def _compute_line_ids(self):
         Line = self.env["vivo.count.line"]
@@ -79,6 +84,21 @@ class VivoCountReconReport(models.Model):
                     ("counted_qty", ">", 0),
                 ]
             )
+
+    @api.depends("line_ids", "line_ids.counted_qty", "line_ids.section_id.name")
+    def _compute_rack_breakdown(self):
+        for rec in self:
+            lines = rec.line_ids.filtered(lambda l: (l.counted_qty or 0.0) > 0)
+            # Stable order: section sequence, then name.
+            lines = lines.sorted(
+                key=lambda l: (l.section_id.sequence, l.section_id.name or "")
+            )
+            parts = []
+            for line in lines:
+                qty = line.counted_qty or 0.0
+                qty_str = str(int(qty)) if float(qty).is_integer() else "%.1f" % qty
+                parts.append("%s: %s" % (line.section_id.name or "?", qty_str))
+            rec.rack_breakdown = ", ".join(parts) or "-"
 
     def init(self):
         tools.drop_view_if_exists(self.env.cr, self._table)
