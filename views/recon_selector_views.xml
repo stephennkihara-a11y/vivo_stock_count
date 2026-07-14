@@ -26,8 +26,8 @@
                                     <field name="state"/>
                                 </span>
                             </div>
-                            <div class="text-muted"><i class="fa fa-map-marker"/> <field name="location_id"/></div>
-                            <div class="text-muted small"><i class="fa fa-calendar"/> <field name="scheduled_date"/></div>
+                            <div class="text-muted"><i class="fa fa-map-marker" title="Store" aria-label="Store" role="img"/> <field name="location_id"/></div>
+                            <div class="text-muted small"><i class="fa fa-calendar" title="Date" aria-label="Date" role="img"/> <field name="scheduled_date"/></div>
                             <div class="mt-1 small">
                                 <field name="sections_reconciled"/>/<field name="sections_total"/> racks reconciled
                             </div>
