@@ -151,8 +151,10 @@
                         <page string="Counted in this rack" name="counted">
                             <field name="counted_line_count" invisible="1"/>
                             <field name="line_ids" domain="[('counted_qty', '&gt;', 0)]" context="{'default_section_id': id}">
-                                <list editable="bottom" decoration-danger="difference &lt; 0" decoration-success="difference &gt; 0">
+                                <list editable="bottom" decoration-danger="is_unknown or difference &lt; 0" decoration-success="not is_unknown and difference &gt; 0">
+                                    <field name="is_unknown" column_invisible="1"/>
                                     <field name="product_id"/>
+                                    <field name="scanned_barcode" string="Unknown Barcode" optional="show"/>
                                     <field name="system_qty"/>
                                     <field name="counted_qty"/>
                                     <field name="difference"/>

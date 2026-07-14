@@ -43,8 +43,32 @@ class VivoCountLine(models.Model):
         store=True,
         readonly=True,
     )
-    product_id = fields.Many2one("product.product", string="SKU", required=True)
+    product_id = fields.Many2one("product.product", string="SKU")
     barcode = fields.Char(related="product_id.barcode", store=True, readonly=True)
+
+    # Unknown-barcode capture: a scan whose barcode matched no product is
+    # recorded here as a PRODUCT-LESS line (product_id empty). The raw barcode
+    # is preserved so the item can be identified and, in a later phase, linked
+    # to a real SKU. Capture only — no product master is ever created here.
+    scanned_barcode = fields.Char(
+        string="Scanned Barcode",
+        index=True,
+        help="Raw barcode as scanned. Set on unknown-item lines that carry no "
+        "SKU; used to key/aggregate captured unknowns per rack.",
+    )
+    is_unknown = fields.Boolean(
+        string="Unknown / Not in System",
+        default=False,
+        index=True,
+        help="This line was captured from a barcode that matched no product. "
+        "It has no SKU and is surfaced as a positive (surplus) variance.",
+    )
+    product_title = fields.Char(
+        string="Product Title",
+        compute="_compute_product_title",
+        help="Product name for known SKUs; the literal 'Unknown' for captured "
+        "barcodes that match no product.",
+    )
 
     system_qty = fields.Float(
         digits="Product Unit of Measure",
@@ -103,6 +127,11 @@ class VivoCountLine(models.Model):
     def _compute_difference(self):
         for line in self:
             line.difference = (line.counted_qty or 0.0) - (line.system_qty or 0.0)
+
+    @api.depends("product_id", "product_id.name", "is_unknown")
+    def _compute_product_title(self):
+        for line in self:
+            line.product_title = line.product_id.name if line.product_id else "Unknown"
 
     @api.depends("counted_qty")
     def _compute_line_status(self):
@@ -171,6 +200,7 @@ class VivoCountLine(models.Model):
         scanned_qty,
         idempotency_key,
         device_id=None,
+        scanned_barcode=None,
     ):
         """Idempotent scan-and-increment endpoint for the mobile PWA.
 
@@ -182,6 +212,13 @@ class VivoCountLine(models.Model):
           is incremented by `scanned_qty` (scan-once-then-type-qty: one scan
           event with scanned_qty=6 → counted_qty +=6, scan_count +=1).
         - On the first scan of an SKU in a section, the line is created.
+
+        Unknown-barcode capture: when ``product_id`` is empty and a
+        ``scanned_barcode`` is supplied, the scan is aggregated onto a
+        PRODUCT-LESS line keyed by (section, scanned_barcode), flagged
+        ``is_unknown``. It rides the SAME idempotency path, so a retried
+        unknown scan de-dupes on idempotency_key exactly like a known one —
+        it can never create a duplicate unknown line or double the qty.
         """
         if not idempotency_key:
             raise ValidationError(_("idempotency_key is required."))
@@ -206,6 +243,64 @@ class VivoCountLine(models.Model):
                 "counted_qty": existing.line_id.counted_qty,
                 "scan_count": existing.line_id.scan_count,
             }
+        scan_type = "rescan" if section.state == "variance_rescan" else "initial"
+        is_unknown = not product_id
+        if is_unknown:
+            # No SKU matched the scanned barcode — capture it as a product-less
+            # line so the item is never silently dropped. Aggregate per barcode
+            # per rack (one line, qty accumulates), mirroring the known flow.
+            if not scanned_barcode:
+                raise ValidationError(
+                    _("A scan with no product must carry a scanned barcode.")
+                )
+            line = self.search(
+                [
+                    ("section_id", "=", section.id),
+                    ("is_unknown", "=", True),
+                    ("scanned_barcode", "=", scanned_barcode),
+                ],
+                limit=1,
+            )
+            if not line:
+                line = self.create(
+                    {
+                        "section_id": section.id,
+                        "product_id": False,
+                        "scanned_barcode": scanned_barcode,
+                        "is_unknown": True,
+                        "system_qty": 0.0,
+                        "counted_qty": 0.0,
+                        "unit_cost": 0.0,
+                        "counter_id": self.env.uid,
+                        "scanned_at": fields.Datetime.now(),
+                    }
+                )
+            line.write(
+                {
+                    "counted_qty": (line.counted_qty or 0.0) + scanned_qty,
+                    "scan_count": (line.scan_count or 0) + 1,
+                    "counter_id": self.env.uid,
+                    "scanned_at": fields.Datetime.now(),
+                }
+            )
+            event = ScanEvent.sudo().create(
+                {
+                    "line_id": line.id,
+                    "counter_id": self.env.uid,
+                    "scanned_qty": scanned_qty,
+                    "scan_type": scan_type,
+                    "idempotency_key": idempotency_key,
+                    "device_id": device_id or "",
+                }
+            )
+            return {
+                "idempotent": False,
+                "is_unknown": True,
+                "scan_event_id": event.id,
+                "line_id": line.id,
+                "counted_qty": line.counted_qty,
+                "scan_count": line.scan_count,
+            }
         product = self.env["product.product"].browse(product_id).exists()
         if not product:
             raise ValidationError(_("Product not found."))
@@ -213,7 +308,6 @@ class VivoCountLine(models.Model):
             [("section_id", "=", section.id), ("product_id", "=", product.id)],
             limit=1,
         )
-        scan_type = "rescan" if section.state == "variance_rescan" else "initial"
         if not line:
             # In snapshot mode the SKU already has a snapshot line elsewhere
             # (the catch-all section); a rack line starts at system_qty 0. In

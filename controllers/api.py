@@ -184,10 +184,11 @@ class VivoCountAPI(http.Controller):
     def scan(
         self,
         section_id,
-        product_id,
-        scanned_qty,
-        idempotency_key,
+        product_id=None,
+        scanned_qty=1,
+        idempotency_key=None,
         device_id=None,
+        scanned_barcode=None,
     ):
         try:
             return request.env["vivo.count.line"].record_scan(
@@ -196,6 +197,7 @@ class VivoCountAPI(http.Controller):
                 scanned_qty=scanned_qty,
                 idempotency_key=idempotency_key,
                 device_id=device_id,
+                scanned_barcode=scanned_barcode,
             )
         except (UserError, ValidationError) as e:
             return {"error": str(e)}
@@ -216,8 +218,11 @@ class VivoCountAPI(http.Controller):
             {
                 "id": l.id,
                 "product_id": l.product_id.id,
-                "product_name": l.product_id.display_name,
-                "barcode": l.product_id.barcode,
+                "product_name": l.product_id.display_name if l.product_id else "Unknown",
+                "product_title": l.product_title,
+                "barcode": l.product_id.barcode if l.product_id else False,
+                "scanned_barcode": l.scanned_barcode,
+                "is_unknown": l.is_unknown,
                 "system_qty": l.system_qty,
                 "counted_qty": l.counted_qty,
                 "scan_count": l.scan_count,

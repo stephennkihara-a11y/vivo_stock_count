@@ -90,6 +90,9 @@ h3 { margin: 0; color: var(--muted); font-size: 1em; }
 .line-status.saved { color: #2e7d32; }
 .line-status.pending { color: var(--orange, #e67e22); }
 .row.compact.is-pending { opacity: 0.85; }
+/* Unknown / not-in-system captures render RED so they stand out from known SKUs. */
+.row.compact.is-unknown { border-left: 4px solid var(--red); background: #fdecea; }
+.row.compact.is-unknown strong { color: var(--red); }
 .pending-banner {
     margin: 8px 0;
     padding: 8px 12px;

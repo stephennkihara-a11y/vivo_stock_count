@@ -41,8 +41,13 @@ class VivoCountReconReport(models.Model):
     session_id = fields.Many2one("vivo.count.session", string="Session", readonly=True)
     product_id = fields.Many2one("product.product", string="SKU", readonly=True)
     product_title = fields.Char(
-        string="Product Title", related="product_id.name", readonly=True
+        string="Product Title",
+        compute="_compute_product_title",
+        search="_search_product_title",
+        readonly=True,
     )
+    is_unknown = fields.Boolean(string="Unknown / Not in System", readonly=True)
+    scanned_barcode = fields.Char(string="Scanned Barcode", readonly=True)
     barcode = fields.Char(string="Barcode", readonly=True)
     system_qty = fields.Float(
         string="System Qty", readonly=True, digits="Product Unit of Measure"
@@ -70,10 +75,37 @@ class VivoCountReconReport(models.Model):
         compute="_compute_rack_breakdown",
     )
 
+    def _compute_product_title(self):
+        for rec in self:
+            rec.product_title = rec.product_id.name if rec.product_id else "Unknown"
+
+    def _search_product_title(self, operator, value):
+        # Search delegates to the real product name; the literal "Unknown"
+        # rows have no product and are reached via the dedicated filter.
+        return [("product_id.name", operator, value)]
+
     def _compute_line_ids(self):
         Line = self.env["vivo.count.line"]
         for rec in self:
-            if not rec.session_id or not rec.product_id:
+            if not rec.session_id:
+                rec.line_ids = Line.browse()
+                continue
+            if rec.is_unknown:
+                # Unknown rows aggregate product-less lines by scanned barcode.
+                if not rec.scanned_barcode:
+                    rec.line_ids = Line.browse()
+                    continue
+                rec.line_ids = Line.search(
+                    [
+                        ("section_id.session_id", "=", rec.session_id.id),
+                        ("is_unknown", "=", True),
+                        ("scanned_barcode", "=", rec.scanned_barcode),
+                        ("section_id.state", "in", list(SUBMITTED_STATES)),
+                        ("counted_qty", ">", 0),
+                    ]
+                )
+                continue
+            if not rec.product_id:
                 rec.line_ids = Line.browse()
                 continue
             rec.line_ids = Line.search(
@@ -108,7 +140,9 @@ class VivoCountReconReport(models.Model):
                 WITH base AS (
                     -- Baseline over ALL of the session's sections (every state):
                     -- the expected qty must not depend on which racks are
-                    -- submitted. One row per (session, product).
+                    -- submitted. One row per (session, product). Unknown
+                    -- (product-less) lines are excluded here and handled by the
+                    -- dedicated UNION branch below.
                     SELECT
                         sec.session_id       AS session_id,
                         l.product_id         AS product_id,
@@ -116,6 +150,7 @@ class VivoCountReconReport(models.Model):
                         MIN(l.id)            AS id
                     FROM vivo_count_line l
                     JOIN vivo_count_section sec ON sec.id = l.section_id
+                    WHERE l.product_id IS NOT NULL
                     GROUP BY sec.session_id, l.product_id
                 ),
                 counted AS (
@@ -128,13 +163,16 @@ class VivoCountReconReport(models.Model):
                         COUNT(*) FILTER (WHERE l.counted_qty > 0)  AS rack_count
                     FROM vivo_count_line l
                     JOIN vivo_count_section sec ON sec.id = l.section_id
-                    WHERE sec.state IN ('pending_review', 'reconciled', 'physical_review')
+                    WHERE l.product_id IS NOT NULL
+                      AND sec.state IN ('pending_review', 'reconciled', 'physical_review')
                     GROUP BY sec.session_id, l.product_id
                 )
                 SELECT
                     b.id                                            AS id,
                     b.session_id                                    AS session_id,
                     b.product_id                                    AS product_id,
+                    false                                           AS is_unknown,
+                    NULL::varchar                                   AS scanned_barcode,
                     pp.barcode                                      AS barcode,
                     b.system_qty                                    AS system_qty,
                     COALESCE(c.counted_qty, 0.0)                    AS counted_qty,
@@ -148,6 +186,34 @@ class VivoCountReconReport(models.Model):
                 LEFT JOIN counted c
                     ON c.session_id = b.session_id
                     AND c.product_id = b.product_id
+
+                UNION ALL
+
+                -- Unknown captures: product-less lines grouped by
+                -- (session, scanned_barcode) over SUBMITTED sections only.
+                -- system_qty is 0 (never expected), so the whole counted qty
+                -- reads as a positive surplus variance. MIN(l.id) is taken over
+                -- a disjoint set of lines (all product-less), so it can never
+                -- collide with a known-branch id.
+                SELECT
+                    MIN(l.id)                                       AS id,
+                    sec.session_id                                  AS session_id,
+                    NULL::integer                                   AS product_id,
+                    true                                            AS is_unknown,
+                    l.scanned_barcode                               AS scanned_barcode,
+                    l.scanned_barcode                               AS barcode,
+                    0.0                                             AS system_qty,
+                    SUM(l.counted_qty)                              AS counted_qty,
+                    SUM(l.counted_qty)                              AS variance,
+                    0.0                                             AS price,
+                    bool_or(l.counted_qty > 0)                      AS counted,
+                    COUNT(*) FILTER (WHERE l.counted_qty > 0)       AS rack_count
+                FROM vivo_count_line l
+                JOIN vivo_count_section sec ON sec.id = l.section_id
+                WHERE l.is_unknown = true
+                  AND l.scanned_barcode IS NOT NULL
+                  AND sec.state IN ('pending_review', 'reconciled', 'physical_review')
+                GROUP BY sec.session_id, l.scanned_barcode
             )
             """
             % self._table

@@ -4,12 +4,14 @@
         <field name="name">vivo.count.line.list</field>
         <field name="model">vivo.count.line</field>
         <field name="arch" type="xml">
-            <list string="Count Lines" decoration-danger="difference &lt; 0" decoration-success="difference &gt; 0">
+            <list string="Count Lines" decoration-danger="is_unknown or difference &lt; 0" decoration-success="not is_unknown and difference &gt; 0">
+                <field name="is_unknown" column_invisible="1"/>
                 <field name="session_id"/>
                 <field name="section_id"/>
                 <field name="zone_id"/>
                 <field name="product_id"/>
                 <field name="barcode"/>
+                <field name="scanned_barcode" string="Unknown Barcode" optional="show"/>
                 <field name="system_qty"/>
                 <field name="counted_qty"/>
                 <field name="difference"/>
@@ -55,6 +57,7 @@
         <field name="arch" type="xml">
             <search>
                 <field name="product_id"/>
+                <field name="scanned_barcode"/>
                 <field name="session_id"/>
                 <field name="section_id"/>
                 <field name="zone_id"/>
@@ -63,6 +66,7 @@
                 <filter name="filter_counted" string="Counted" domain="[('line_status','=','counted')]"/>
                 <filter name="filter_not_counted" string="Not Counted Here" domain="[('line_status','=','not_counted')]"/>
                 <filter name="filter_unexpected" string="Unexpected (overage)" domain="[('is_unexpected','=',True)]"/>
+                <filter name="filter_unknown" string="Unknown / Not in System" domain="[('is_unknown','=',True)]"/>
                 <separator/>
                 <filter name="filter_with_variance" string="With Variance" domain="[('difference','!=',0),('line_status','=','counted')]"/>
                 <filter name="filter_shortage" string="Shortage" domain="[('difference','&lt;',0),('line_status','=','counted')]"/>

@@ -84,7 +84,7 @@ export const api = {
      * Returns {synced:true,...server} or {queued:true, idempotency_key}. Never
      * throws — the counter keeps scanning regardless of the network.
      */
-    async scan({ section_id, product_id, scanned_qty, device_id, product_name, barcode }) {
+    async scan({ section_id, product_id, scanned_qty, device_id, product_name, barcode, scanned_barcode }) {
         const idempotency_key = uuid4();
         const record = {
             idempotency_key, // client uuid — the server de-dupes on this
@@ -94,6 +94,9 @@ export const api = {
             device_id,
             product_name,
             barcode,
+            // Set only for unknown captures (no product matched). Keys the
+            // product-less line server-side and the local pending group.
+            scanned_barcode,
             ts: Date.now(),
             status: 'pending',
         };
@@ -148,6 +151,7 @@ function _serverPayload(r) {
         scanned_qty: r.scanned_qty,
         idempotency_key: r.idempotency_key,
         device_id: r.device_id,
+        scanned_barcode: r.scanned_barcode,
     };
 }
 

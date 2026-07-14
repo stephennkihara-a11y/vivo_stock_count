@@ -85,6 +85,20 @@ export const idb = {
         for (const r of victims) await this.removeQueued(r.idempotency_key);
         return victims.length;
     },
+    /** Drop every pending local scan for an unknown (product-less) capture in a
+     *  section, keyed by scanned_barcode — the delete-purge for unknown lines,
+     *  so a removed unknown scan is not resurrected on the next sync. */
+    async removeQueuedByBarcode(section_id, scanned_barcode) {
+        const all = await this.allQueued();
+        const victims = all.filter(
+            (r) =>
+                r.section_id === section_id &&
+                !r.product_id &&
+                r.scanned_barcode === scanned_barcode
+        );
+        for (const r of victims) await this.removeQueued(r.idempotency_key);
+        return victims.length;
+    },
     async cacheProduct(p) {
         if (!p.barcode) return;
         const s = await _tx('productCache', 'readwrite');

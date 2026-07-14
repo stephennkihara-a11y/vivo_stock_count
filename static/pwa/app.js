@@ -271,16 +271,37 @@ async function renderScanner() {
 }
 
 async function handleScan(barcode) {
-    const product = await resolveBarcode(barcode);
-    if (!product) {
-        const $last = $main.querySelector('#last-scan');
-        if ($last) $last.innerHTML = `<div class="warn">No SKU found for ${barcode}</div>`;
-        return;
-    }
     // Auto-add one unit per scan — a barcode scanner fires once per physical
-    // item, so no quantity prompt. Repeat scans of the same SKU accumulate
+    // item, so no quantity prompt. Repeat scans of the same item accumulate
     // (record_scan sums scanned_qty server-side).
     const qty = 1;
+    const product = await resolveBarcode(barcode);
+    const $last = $main.querySelector('#last-scan');
+    if (!product) {
+        // No SKU matched — CAPTURE the raw barcode as a product-less line
+        // instead of dropping it. No popup, no note prompt, zero extra taps;
+        // it will render RED in the list and flow through the reports.
+        const r = await api.scan({
+            section_id: state.section.id,
+            product_id: null,
+            scanned_qty: qty,
+            device_id: deviceId,
+            product_name: 'Unknown',
+            barcode: barcode,
+            scanned_barcode: barcode,
+        });
+        if (r.error) {
+            if ($last) $last.innerHTML = `<div class="warn">${r.error}</div>`;
+        } else if (r.queued) {
+            if ($last)
+                $last.innerHTML = `<div class="ok queued">Saved on device — syncing: Unknown (${barcode})</div>`;
+        } else {
+            if ($last)
+                $last.innerHTML = `<div class="warn">⚠ Unknown barcode ${barcode} — captured ✓</div>`;
+        }
+        await refreshLines();
+        return;
+    }
     const r = await api.scan({
         section_id: state.section.id,
         product_id: product.product_id || product.id,
@@ -289,7 +310,6 @@ async function handleScan(barcode) {
         product_name: product.name,
         barcode: product.barcode,
     });
-    const $last = $main.querySelector('#last-scan');
     if (r.error) {
         // Server was reached and rejected it (e.g. rack no longer scanning).
         $last.innerHTML = `<div class="warn">${r.error}</div>`;
@@ -332,39 +352,56 @@ async function refreshLines() {
     }
     const serverLines = state.sectionLines || [];
 
-    // Group pending scans by product so a row shows saved + in-flight together.
-    const pendingByProduct = {};
+    // A line is either a known SKU (keyed by product_id) or an unknown capture
+    // (keyed by scanned_barcode). One key space covers both so saved+pending
+    // merge on the same row.
+    const keyOf = (r) =>
+        r.is_unknown || (!r.product_id && r.scanned_barcode)
+            ? `u:${r.scanned_barcode}`
+            : `p:${r.product_id}`;
+
+    // Group pending scans so a row shows saved + in-flight together.
+    const pendingByKey = {};
     for (const p of pending) {
-        const slot = (pendingByProduct[p.product_id] =
-            pendingByProduct[p.product_id] || {
-                qty: 0,
-                name: p.product_name,
-                barcode: p.barcode,
-            });
+        const isUnknown = !p.product_id && !!p.scanned_barcode;
+        const key = keyOf(p);
+        const slot = (pendingByKey[key] = pendingByKey[key] || {
+            qty: 0,
+            name: isUnknown ? 'Unknown' : p.product_name,
+            barcode: isUnknown ? p.scanned_barcode : p.barcode,
+            product_id: p.product_id || null,
+            scanned_barcode: p.scanned_barcode || null,
+            is_unknown: isUnknown,
+        });
         slot.qty += p.scanned_qty || 1;
     }
 
     const rows = [];
     const seen = new Set();
     for (const l of serverLines) {
-        const pend = pendingByProduct[l.product_id];
+        const key = keyOf(l);
+        const pend = pendingByKey[key];
         rows.push({
             line_id: l.id,
             product_id: l.product_id,
-            name: l.product_name,
-            barcode: l.barcode,
+            scanned_barcode: l.scanned_barcode,
+            is_unknown: !!l.is_unknown,
+            name: l.is_unknown ? 'Unknown' : l.product_name,
+            barcode: l.is_unknown ? l.scanned_barcode : l.barcode,
             saved: l.counted_qty || 0,
             pending: pend ? pend.qty : 0,
         });
-        seen.add(l.product_id);
+        seen.add(key);
     }
-    // Pending-only products (first scan still in flight, no server line yet).
-    for (const pid of Object.keys(pendingByProduct)) {
-        if (seen.has(Number(pid))) continue;
-        const pend = pendingByProduct[pid];
+    // Pending-only rows (first scan still in flight, no server line yet).
+    for (const key of Object.keys(pendingByKey)) {
+        if (seen.has(key)) continue;
+        const pend = pendingByKey[key];
         rows.push({
             line_id: null,
-            product_id: Number(pid),
+            product_id: pend.product_id,
+            scanned_barcode: pend.scanned_barcode,
+            is_unknown: pend.is_unknown,
             name: pend.name,
             barcode: pend.barcode,
             saved: 0,
@@ -382,7 +419,9 @@ async function refreshLines() {
             ? '<span class="line-status pending" title="Syncing">⏳</span>'
             : '<span class="line-status saved" title="Saved on server">✓</span>';
         const $row = el(`
-            <div class="row compact ${isPending ? 'is-pending' : ''}">
+            <div class="row compact ${isPending ? 'is-pending' : ''} ${
+            row.is_unknown ? 'is-unknown' : ''
+        }">
                 <div class="col">
                     <strong>${row.name || ''}</strong>
                     <small>${row.barcode || ''}</small>
@@ -394,9 +433,14 @@ async function refreshLines() {
         $row.querySelector('.line-del').addEventListener('click', async (ev) => {
             ev.stopPropagation();
             if (!confirm(`Remove ${row.name} from this rack?`)) return;
-            // Purge any not-yet-synced local scans for this product FIRST, so a
-            // deleted scan can never be resurrected by a later sync.
-            await idb.removeQueuedByProduct(state.section.id, row.product_id);
+            // Purge any not-yet-synced local scans for this item FIRST, so a
+            // deleted scan can never be resurrected by a later sync. Unknown
+            // captures are keyed by barcode, known lines by product.
+            if (row.is_unknown) {
+                await idb.removeQueuedByBarcode(state.section.id, row.scanned_barcode);
+            } else {
+                await idb.removeQueuedByProduct(state.section.id, row.product_id);
+            }
             await api.refreshQueue();
             if (row.line_id) {
                 try {

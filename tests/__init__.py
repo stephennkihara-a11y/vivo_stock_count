@@ -13,3 +13,4 @@ from . import test_count_mode
 from . import test_recon_report
 from . import test_scan_delete_line
 from . import test_scan_idempotency
+from . import test_unknown_barcode
