@@ -37,6 +37,7 @@
                 <field name="variance" decoration-danger="variance &lt; 0" decoration-success="variance &gt; 0"/>
                 <field name="price"/>
                 <field name="rack_count"/>
+                <field name="rack_breakdown" optional="hide"/>
                 <field name="counted" column_invisible="1"/>
                 <field name="session_id" optional="hide"/>
             </list>
@@ -69,6 +70,9 @@
                         </group>
                     </group>
                     <separator string="Per-Rack Breakdown"/>
+                    <group>
+                        <field name="rack_breakdown" string="Summary"/>
+                    </group>
                     <field name="line_ids" readonly="1">
                         <list string="Per-Rack Breakdown" create="false" edit="false" delete="false">
                             <field name="section_id"/>
