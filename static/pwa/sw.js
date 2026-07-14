@@ -7,7 +7,7 @@
  *
  * Cache version is bumped per release to force shell update.
  */
-const VERSION = 'vivo-count-v3';
+const VERSION = 'vivo-count-v4';
 const SHELL = [
     '/vivo-count/pwa',
     '/vivo-count/pwa/manifest.webmanifest',

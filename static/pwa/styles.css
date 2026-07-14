@@ -86,6 +86,20 @@ h3 { margin: 0; color: var(--muted); font-size: 1em; }
     padding: 6px 8px;
     cursor: pointer;
 }
+.line-status { margin: 0 8px; font-size: 0.95em; }
+.line-status.saved { color: #2e7d32; }
+.line-status.pending { color: var(--orange, #e67e22); }
+.row.compact.is-pending { opacity: 0.85; }
+.pending-banner {
+    margin: 8px 0;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: #fff4e5;
+    color: #8a5300;
+    font-size: 0.9em;
+    font-weight: 600;
+}
+.pending-banner.hidden { display: none; }
 
 .row.state-draft       { border-left: 6px solid var(--gray); }
 .row.state-scanning    { border-left: 6px solid var(--amber); }

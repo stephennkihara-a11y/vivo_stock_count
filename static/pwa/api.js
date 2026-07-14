@@ -21,11 +21,20 @@ async function emitQueue() {
 window.addEventListener('online', () => {
     online = true;
     emitNet();
-    drainQueue();
+    backoff = MIN_BACKOFF;
+    flushQueue();
 });
 window.addEventListener('offline', () => {
     online = false;
     emitNet();
+});
+// A short dead-spot often ends without a clean 'online' event (e.g. the tab was
+// backgrounded during the gap). Flush whenever the tab regains focus, too.
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && online) {
+        backoff = MIN_BACKOFF;
+        flushQueue();
+    }
 });
 
 async function rpc(path, params = {}) {
@@ -66,31 +75,44 @@ export const api = {
             idempotency_key,
         }),
     /**
-     * Send a scan to the server. If offline (or the request fails), the
-     * scan is queued in IndexedDB and replayed on next online event.
-     * Returns either the server response or a {queued: true} stub.
+     * LOCAL-FIRST scan. The scan is persisted to IndexedDB BEFORE any network
+     * call, so a scan lost mid-send, on a connection blip, or on device death
+     * survives and replays on resume. It then attempts the server save:
+     *   - success        -> drop the local copy (server is now authoritative);
+     *   - server rejected -> drop (retrying an invalid scan won't help);
+     *   - transport fail  -> leave 'pending' and let the backoff flusher retry.
+     * Returns {synced:true,...server} or {queued:true, idempotency_key}. Never
+     * throws — the counter keeps scanning regardless of the network.
      */
-    async scan({ section_id, product_id, scanned_qty, device_id }) {
+    async scan({ section_id, product_id, scanned_qty, device_id, product_name, barcode }) {
         const idempotency_key = uuid4();
-        const payload = {
+        const record = {
+            idempotency_key, // client uuid — the server de-dupes on this
             section_id,
             product_id,
             scanned_qty,
-            idempotency_key,
             device_id,
+            product_name,
+            barcode,
+            ts: Date.now(),
+            status: 'pending',
         };
+        await idb.queueScan(record); // (1) LOCAL-FIRST: persist before network
+        await emitQueue();
         if (!online) {
-            await idb.queueScan(payload);
-            await emitQueue();
+            scheduleFlush();
             return { queued: true, idempotency_key };
         }
         try {
-            const r = await rpc('/vivo-count/api/scan', payload);
-            return r;
-        } catch (e) {
-            // Network or 5xx -> queue and resolve so UX continues.
-            await idb.queueScan(payload);
+            const r = await rpc('/vivo-count/api/scan', _serverPayload(record));
+            // Response received (success OR server-side rejection) is terminal:
+            // the server has a verdict, so drop the local copy either way.
+            await idb.removeQueued(idempotency_key);
             await emitQueue();
+            return { ...r, idempotency_key, synced: !r.error };
+        } catch (e) {
+            // Transport failure (offline / timeout / 5xx) — stays pending.
+            scheduleFlush();
             return { queued: true, idempotency_key };
         }
     },
@@ -103,22 +125,72 @@ export const api = {
         emitQueue();
     },
     isOnline: () => online,
+    flushQueue,
     drainQueue,
+    // Re-emit the pending count after a direct IndexedDB change made outside
+    // api.scan (e.g. a delete purging pending records).
+    refreshQueue: () => emitQueue(),
 };
 
-export async function drainQueue() {
+// ----- Sync queue + auto-retry with backoff -----
+const MIN_BACKOFF = 2000;
+const MAX_BACKOFF = 30000;
+let backoff = MIN_BACKOFF;
+let flushTimer = null;
+
+// Only the fields the /api/scan controller accepts — the local record carries
+// extra display fields (product_name, barcode, ts, status) that must not be
+// posted (the JSON controller rejects unexpected kwargs).
+function _serverPayload(r) {
+    return {
+        section_id: r.section_id,
+        product_id: r.product_id,
+        scanned_qty: r.scanned_qty,
+        idempotency_key: r.idempotency_key,
+        device_id: r.device_id,
+    };
+}
+
+/**
+ * Flush every pending local scan to the server. Success or a server-side
+ * rejection drops the item (terminal — the same request would get the same
+ * verdict); a transport failure stops the drain and reschedules with backoff.
+ * Idempotency (the server de-dupes on idempotency_key) makes a replay after an
+ * ambiguous failure safe: it can never create a second line or double the qty.
+ */
+export async function flushQueue() {
+    if (flushTimer) {
+        clearTimeout(flushTimer);
+        flushTimer = null;
+    }
     if (!online) return;
     const items = await idb.allQueued();
     for (const item of items) {
         try {
-            const r = await rpc('/vivo-count/api/scan', item);
-            if (!r || !r.error) {
-                await idb.removeQueued(item.idempotency_key);
-            }
+            await rpc('/vivo-count/api/scan', _serverPayload(item));
+            await idb.removeQueued(item.idempotency_key);
         } catch (e) {
-            // network flap mid-drain — stop and retry on next online event
-            break;
+            // Transport flap mid-drain — keep the rest, retry on backoff.
+            await emitQueue();
+            scheduleFlush();
+            return;
         }
     }
-    emitQueue();
+    await emitQueue();
+    backoff = MIN_BACKOFF; // queue drained clean
+}
+
+function scheduleFlush() {
+    if (flushTimer || !online) return;
+    flushTimer = setTimeout(() => {
+        flushTimer = null;
+        flushQueue();
+    }, backoff);
+    backoff = Math.min(backoff * 2, MAX_BACKOFF);
+}
+
+// Back-compat alias — app.js calls drainQueue() on boot.
+export async function drainQueue() {
+    backoff = MIN_BACKOFF;
+    return flushQueue();
 }

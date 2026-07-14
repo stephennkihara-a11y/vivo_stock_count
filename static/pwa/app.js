@@ -226,6 +226,7 @@ async function renderScanner() {
             </div>
             <video id="cam" playsinline muted style="display:none;max-width:100%;border-radius:6px;margin-top:8px"></video>
             <div id="last-scan" class="last-scan"></div>
+            <div id="pending-banner" class="pending-banner hidden"></div>
             <h3 style="margin-top:16px">This rack</h3>
             <div id="line-list" class="list compact"></div>
             <div class="totals">
@@ -265,6 +266,8 @@ async function renderScanner() {
     });
 
     await refreshLines();
+    // Resume: push any local scans still pending from a prior session/blip.
+    api.flushQueue().then(() => refreshLines()).catch(() => {});
 }
 
 async function handleScan(barcode) {
@@ -283,14 +286,18 @@ async function handleScan(barcode) {
         product_id: product.product_id || product.id,
         scanned_qty: qty,
         device_id: deviceId,
+        product_name: product.name,
+        barcode: product.barcode,
     });
     const $last = $main.querySelector('#last-scan');
-    if (r.queued) {
-        $last.innerHTML = `<div class="ok queued">Queued offline: ${product.name} × ${qty}</div>`;
-    } else if (r.error) {
+    if (r.error) {
+        // Server was reached and rejected it (e.g. rack no longer scanning).
         $last.innerHTML = `<div class="warn">${r.error}</div>`;
+    } else if (r.queued) {
+        // Saved on the device; will sync automatically when the network returns.
+        $last.innerHTML = `<div class="ok queued">Saved on device — syncing: ${product.name}</div>`;
     } else {
-        $last.innerHTML = `<div class="ok">${product.name} → total ${r.counted_qty}</div>`;
+        $last.innerHTML = `<div class="ok">${product.name} — saved ✓</div>`;
     }
     await refreshLines();
 }
@@ -310,38 +317,112 @@ async function resolveBarcode(barcode) {
 }
 
 async function refreshLines() {
-    if (!api.isOnline()) return; // offline UI keeps the last-rendered list
-    const lines = await api.sectionLines(state.section.id);
-    state.sectionLines = lines;
     const $list = $main.querySelector('#line-list');
     if (!$list) return;
+
+    // Device source of truth for scans not yet confirmed by the server.
+    const pending = await idb.pendingForSection(state.section.id);
+    // Server-confirmed lines; keep the last-known set when offline.
+    if (api.isOnline()) {
+        try {
+            state.sectionLines = await api.sectionLines(state.section.id);
+        } catch (e) {
+            /* keep last-known list */
+        }
+    }
+    const serverLines = state.sectionLines || [];
+
+    // Group pending scans by product so a row shows saved + in-flight together.
+    const pendingByProduct = {};
+    for (const p of pending) {
+        const slot = (pendingByProduct[p.product_id] =
+            pendingByProduct[p.product_id] || {
+                qty: 0,
+                name: p.product_name,
+                barcode: p.barcode,
+            });
+        slot.qty += p.scanned_qty || 1;
+    }
+
+    const rows = [];
+    const seen = new Set();
+    for (const l of serverLines) {
+        const pend = pendingByProduct[l.product_id];
+        rows.push({
+            line_id: l.id,
+            product_id: l.product_id,
+            name: l.product_name,
+            barcode: l.barcode,
+            saved: l.counted_qty || 0,
+            pending: pend ? pend.qty : 0,
+        });
+        seen.add(l.product_id);
+    }
+    // Pending-only products (first scan still in flight, no server line yet).
+    for (const pid of Object.keys(pendingByProduct)) {
+        if (seen.has(Number(pid))) continue;
+        const pend = pendingByProduct[pid];
+        rows.push({
+            line_id: null,
+            product_id: Number(pid),
+            name: pend.name,
+            barcode: pend.barcode,
+            saved: 0,
+            pending: pend.qty,
+        });
+    }
+
     $list.innerHTML = '';
     let total = 0;
-    for (const l of lines) {
-        total += l.counted_qty;
-        const row = el(`
-            <div class="row compact">
+    for (const row of rows) {
+        const shown = row.saved + row.pending; // running count the counter sees
+        total += shown;
+        const isPending = row.pending > 0;
+        const status = isPending
+            ? '<span class="line-status pending" title="Syncing">⏳</span>'
+            : '<span class="line-status saved" title="Saved on server">✓</span>';
+        const $row = el(`
+            <div class="row compact ${isPending ? 'is-pending' : ''}">
                 <div class="col">
-                    <strong>${l.product_name}</strong>
-                    <small>${l.barcode || ''}</small>
+                    <strong>${row.name || ''}</strong>
+                    <small>${row.barcode || ''}</small>
                 </div>
-                <span class="qty">${l.counted_qty}</span>
-                <button class="line-del" data-id="${l.id}" title="Remove line" aria-label="Remove line">✕</button>
+                ${status}
+                <span class="qty">${shown}</span>
+                <button class="line-del" title="Remove line" aria-label="Remove line">✕</button>
             </div>`);
-        row.querySelector('.line-del').addEventListener('click', async (ev) => {
+        $row.querySelector('.line-del').addEventListener('click', async (ev) => {
             ev.stopPropagation();
-            if (!confirm(`Remove ${l.product_name} from this rack?`)) return;
-            const r = await api.deleteLine(l.id);
-            if (r && r.error) {
-                alert(r.error);
-                return;
+            if (!confirm(`Remove ${row.name} from this rack?`)) return;
+            // Purge any not-yet-synced local scans for this product FIRST, so a
+            // deleted scan can never be resurrected by a later sync.
+            await idb.removeQueuedByProduct(state.section.id, row.product_id);
+            await api.refreshQueue();
+            if (row.line_id) {
+                try {
+                    const r = await api.deleteLine(row.line_id);
+                    if (r && r.error) alert(r.error);
+                } catch (e) {
+                    alert('Cannot remove a saved line while offline.');
+                }
             }
             await refreshLines();
         });
-        $list.appendChild(row);
+        $list.appendChild($row);
     }
+
     const $t = $main.querySelector('#scan-total');
     if ($t) $t.textContent = total;
+
+    const $banner = $main.querySelector('#pending-banner');
+    if ($banner) {
+        if (pending.length > 0) {
+            $banner.textContent = `${pending.length} scan(s) pending — syncing…`;
+            $banner.classList.remove('hidden');
+        } else {
+            $banner.classList.add('hidden');
+        }
+    }
 }
 
 // ----- Screen: physical count mode -----

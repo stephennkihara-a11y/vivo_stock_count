@@ -70,6 +70,21 @@ export const idb = {
             r.onerror = () => reject(r.error);
         });
     },
+    /** Pending (not-yet-synced) local scan records for one section. */
+    async pendingForSection(section_id) {
+        const all = await this.allQueued();
+        return all.filter((s) => s.section_id === section_id);
+    },
+    /** Drop every pending local scan for a (section, product) — used when a
+     *  line is deleted so a removed scan is not resurrected on the next sync. */
+    async removeQueuedByProduct(section_id, product_id) {
+        const all = await this.allQueued();
+        const victims = all.filter(
+            (r) => r.section_id === section_id && r.product_id === product_id
+        );
+        for (const r of victims) await this.removeQueued(r.idempotency_key);
+        return victims.length;
+    },
     async cacheProduct(p) {
         if (!p.barcode) return;
         const s = await _tx('productCache', 'readwrite');
