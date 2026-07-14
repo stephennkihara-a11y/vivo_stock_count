@@ -64,8 +64,10 @@ export const api = {
     lookupBarcode: (barcode, session_id) =>
         rpc('/vivo-count/api/lookup_barcode', { barcode, session_id }),
     openSection: (section_id) => rpc('/vivo-count/api/section/open', { section_id }),
-    finishScanning: (section_id) =>
-        rpc('/vivo-count/api/section/finish_scanning', { section_id }),
+    finishScanning: (section_id, force = false) =>
+        rpc('/vivo-count/api/section/finish_scanning', { section_id, force }),
+    rejectRecount: (section_id) =>
+        rpc('/vivo-count/api/section/reject_recount', { section_id }),
     releaseLock: (section_id) =>
         rpc('/vivo-count/api/section/release_lock', { section_id }),
     submitPhysical: (section_id, physical_qty, idempotency_key) =>

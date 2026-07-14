@@ -242,14 +242,7 @@ async function renderScanner() {
         await api.releaseLock(state.section.id).catch(() => {});
         renderSectionList();
     });
-    $main.querySelector('#btn-finish').addEventListener('click', async () => {
-        const r = await api.finishScanning(state.section.id);
-        if (r && r.error) {
-            alert(r.error);
-        } else {
-            renderSectionList();
-        }
-    });
+    $main.querySelector('#btn-finish').addEventListener('click', onFinishClicked);
 
     const $bc = $main.querySelector('#barcode-input');
     attachHardwareScanner($bc, handleScan);
@@ -268,6 +261,81 @@ async function renderScanner() {
     await refreshLines();
     // Resume: push any local scans still pending from a prior session/blip.
     api.flushQueue().then(() => refreshLines()).catch(() => {});
+}
+
+// ----- Finish scanning: gate on Physical Count vs Scanned Total -----
+async function onFinishClicked() {
+    const r = await api.finishScanning(state.section.id);
+    if (r && r.error) {
+        alert(r.error);
+        return;
+    }
+    if (r && r.mismatch) {
+        // Counts disagree — do NOT finish silently. Show the red alert with
+        // the two choices instead.
+        showMismatchGate(r);
+        return;
+    }
+    renderSectionList();
+}
+
+function showMismatchGate(r) {
+    const scr = $main.querySelector('.scanner');
+    if (!scr) return;
+    let gate = scr.querySelector('#gate');
+    if (!gate) {
+        gate = el('<div id="gate"></div>');
+        scr.prepend(gate);
+    }
+    gate.innerHTML = `
+        <div class="gate-alert">
+            <strong>⚠ Counts do not match</strong>
+            <div class="gate-nums">Physical: <strong>${r.physical_total_qty}</strong>
+                &nbsp;·&nbsp; Scanned: <strong>${r.scan_total_qty}</strong></div>
+            <div class="gate-actions">
+                <button id="gate-proceed" class="btn primary">Proceed — accept discrepancy</button>
+                <button id="gate-reject" class="btn danger">Reject &amp; recount</button>
+                <button id="gate-cancel" class="btn ghost">Keep scanning</button>
+            </div>
+        </div>`;
+    gate.querySelector('#gate-proceed').addEventListener('click', async () => {
+        const rr = await api.finishScanning(state.section.id, true); // force
+        if (rr && rr.error) {
+            alert(rr.error);
+            return;
+        }
+        renderSectionList();
+    });
+    gate.querySelector('#gate-reject').addEventListener('click', () =>
+        rejectAndRecount(r.line_count)
+    );
+    gate.querySelector('#gate-cancel').addEventListener('click', () => gate.remove());
+    gate.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function rejectAndRecount(lineCount) {
+    const n = lineCount != null ? lineCount : '';
+    if (
+        !confirm(
+            `This will DELETE all ${n} scanned line(s) in Rack ${state.section.name} ` +
+                `and require a full rescan. This cannot be undone. Continue?`
+        )
+    ) {
+        return;
+    }
+    // Purge every not-yet-synced local scan for this section FIRST so a wiped
+    // scan can never be resurrected by a later sync, then reject server-side.
+    await idb.removeQueuedBySection(state.section.id);
+    await api.refreshQueue();
+    const r = await api.rejectRecount(state.section.id);
+    if (r && r.error) {
+        alert(r.error);
+        return;
+    }
+    // Rack is empty and back to scanning — reopen the scan screen fresh.
+    state.section.state = r.state || 'scanning';
+    state.sectionLines = [];
+    renderScanner();
 }
 
 async function handleScan(barcode) {

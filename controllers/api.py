@@ -161,12 +161,32 @@ class VivoCountAPI(http.Controller):
         type="json",
         methods=["POST"],
     )
-    def section_finish(self, section_id):
+    def section_finish(self, section_id, force=False):
         section = request.env["vivo.count.section"].browse(section_id)
         try:
-            return section.finish_scanning_pwa()
+            return section.finish_scanning_pwa(force=force)
         except UserError as e:
             return {"error": str(e)}
+
+    @http.route(
+        "/vivo-count/api/section/reject_recount",
+        auth="user",
+        type="json",
+        methods=["POST"],
+    )
+    def section_reject_recount(self, section_id):
+        """Wipe every scanned line on the rack and send it back to scanning for
+        a full rescan. The pre-reconcile guard + audit trail live in the section
+        method, so this route cannot bypass them."""
+        section = request.env["vivo.count.section"].browse(section_id).exists()
+        if not section:
+            return {"error": "Section not found."}
+        try:
+            return section.reject_and_recount_pwa()
+        except (UserError, ValidationError) as e:
+            return {"error": str(e)}
+        except AccessError as e:
+            return {"error": str(e), "access_denied": True}
 
     @http.route(
         "/vivo-count/api/section/release_lock",

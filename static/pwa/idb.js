@@ -99,6 +99,15 @@ export const idb = {
         for (const r of victims) await this.removeQueued(r.idempotency_key);
         return victims.length;
     },
+    /** Drop EVERY pending local scan for a section — the reject-and-recount
+     *  purge. After a rack is wiped and sent back to scanning, no queued scan
+     *  from the discarded count may re-sync, so clear them all up front. */
+    async removeQueuedBySection(section_id) {
+        const all = await this.allQueued();
+        const victims = all.filter((r) => r.section_id === section_id);
+        for (const r of victims) await this.removeQueued(r.idempotency_key);
+        return victims.length;
+    },
     async cacheProduct(p) {
         if (!p.barcode) return;
         const s = await _tx('productCache', 'readwrite');

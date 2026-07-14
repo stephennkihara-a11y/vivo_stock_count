@@ -128,6 +128,18 @@ class VivoCountSection(models.Model):
     # offline replay does not double-submit (AC #8).
     last_physical_idem_key = fields.Char(readonly=True, copy=False)
 
+    # Append-only audit trail for reject-and-recount. A recount is destructive
+    # (every scanned line is wiped), so who did it and when is recorded here so
+    # the wipe is never invisible. Never cleared, even across repeated recounts.
+    recount_log = fields.Text(
+        string="Recount Audit Log",
+        readonly=True,
+        copy=False,
+        help="Who rejected & recounted this rack, when, and how many lines were "
+             "cleared each time. Append-only — the destructive wipe is logged so "
+             "it leaves a trace.",
+    )
+
     has_unresolved_no_barcode = fields.Boolean(compute="_compute_no_barcode")
 
     _sql_constraints = [
@@ -251,6 +263,99 @@ class VivoCountSection(models.Model):
                 {"state": "pending_review", "locked_by_id": False, "locked_at": False}
             )
         return True
+
+    # ------------------------------------------------------------------
+    # Recount gate — Finish Scanning when physical count != scanned total
+    # ------------------------------------------------------------------
+    def _counts_match(self):
+        """True when the manual Physical Count equals the scanned total.
+
+        Compares ``physical_total_qty`` (manual entry) against
+        ``scan_total_qty`` (sum of counted_qty). Neither is changed here —
+        the gate is a read-only comparison used by both surfaces on Finish.
+        """
+        self.ensure_one()
+        return self.physical_total_qty == self.scan_total_qty
+
+    def action_finish_scanning_gate(self):
+        """Desktop Finish Scanning entry point.
+
+        If the Physical Count matches the scanned total, finish exactly as
+        ``action_finish_scanning`` does (advance to pending_review). If they
+        DISAGREE, open the recount-gate wizard — a red alert with two choices
+        (Proceed and accept the discrepancy, or Reject & recount) — instead of
+        finishing silently.
+        """
+        self.ensure_one()
+        if self.state != "scanning":
+            raise UserError(_("Section %s is not in scanning state.") % self.name)
+        if self._counts_match():
+            return self.action_finish_scanning()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Rack Count Mismatch"),
+            "res_model": "vivo.count.recount.gate.wizard",
+            "view_mode": "form",
+            "target": "new",
+            "context": {"default_section_id": self.id},
+        }
+
+    def action_reject_and_recount(self):
+        """Wipe EVERY scanned line on this rack and send it back to 'scanning'
+        for a full rescan. Destructive by design — the caller's confirmation and
+        the ``recount_log`` audit entry are the safeguards; there is no undo.
+
+        Allowed only while the rack is still pre-reconcile (scanning or the
+        just-finished submit state, pending_review). NEVER once the rack has been
+        reconciled / excluded — that would erase data already counted toward the
+        store. Enforced server-side so no UI path can bypass it. Atomic: the
+        state reset and the line wipe happen in one transaction.
+
+        Any counter may trigger it (no role restriction) — it is a deliberate
+        recount, not a stealth edit.
+        """
+        self.ensure_one()
+        RECOUNTABLE = {"scanning", "pending_review"}
+        if self.state not in RECOUNTABLE:
+            raise UserError(
+                _(
+                    "Rack %(rack)s can no longer be recounted (state: %(state)s). "
+                    "A reconciled or excluded rack is locked."
+                )
+                % {"rack": self.name, "state": self.state}
+            )
+        cleared = len(self.line_ids)
+        # Flip to 'scanning' FIRST so the shared unlink() guard (which only
+        # permits deletion while scanning) allows this deliberate wipe.
+        self.write(
+            {
+                "state": "scanning",
+                "locked_by_id": self.env.user.id,
+                "locked_at": fields.Datetime.now(),
+            }
+        )
+        if self.line_ids:
+            self.line_ids.unlink()
+        # Clear the stale physical count + idempotency key so the rescan starts
+        # from a clean slate (scan_total_qty recomputes to 0 from the empty rack).
+        self.write({"physical_total_qty": 0.0, "last_physical_idem_key": False})
+        self._log_recount(cleared)
+        return cleared
+
+    def _log_recount(self, cleared):
+        """Append a timestamped audit line recording the destructive wipe."""
+        self.ensure_one()
+        entry = _(
+            "Rack rejected & recounted by %(user)s at %(time)s, "
+            "%(n)s line(s) cleared."
+        ) % {
+            "user": self.env.user.name,
+            "time": fields.Datetime.to_string(fields.Datetime.now()),
+            "n": cleared,
+        }
+        self.recount_log = (
+            (self.recount_log + "\n" + entry) if self.recount_log else entry
+        )
 
     def action_submit_physical_count(self, physical_qty=None):
         """physical_count -> pending_review | reconciled | variance_rescan.
@@ -530,12 +635,38 @@ class VivoCountSection(models.Model):
             "scan_total_qty": self.scan_total_qty,
         }
 
-    def finish_scanning_pwa(self):
-        """Scanner finishes the rack -> pending_review (ready for store
-        reconcile). No second-person approval in the two-party flow."""
+    def finish_scanning_pwa(self, force=False):
+        """Scanner finishes the rack. If the manual Physical Count matches the
+        scanned total (or ``force`` is set — the counter chose Proceed on the
+        mismatch alert), advance to pending_review as the two-party flow does.
+
+        On a mismatch with ``force`` unset, DO NOT advance: return a payload the
+        PWA uses to raise its red alert with the two choices (Proceed / Reject &
+        recount). No second-person approval in the two-party flow.
+        """
         self.ensure_one()
+        if self.state != "scanning":
+            # Nothing to gate — already advanced or not scanning; report state.
+            return {"id": self.id, "state": self.state, "mismatch": False}
+        if not force and not self._counts_match():
+            return {
+                "id": self.id,
+                "state": self.state,
+                "mismatch": True,
+                "scan_total_qty": self.scan_total_qty,
+                "physical_total_qty": self.physical_total_qty,
+                "line_count": len(self.line_ids),
+            }
         self.action_finish_scanning()
-        return {"id": self.id, "state": self.state}
+        return {"id": self.id, "state": self.state, "mismatch": False}
+
+    def reject_and_recount_pwa(self):
+        """Reject the rack and wipe it for a full rescan (PWA). Delegates to the
+        guarded ``action_reject_and_recount`` and reports the cleared count and
+        the rack's fresh 'scanning' state so the PWA can reopen the empty rack."""
+        self.ensure_one()
+        cleared = self.action_reject_and_recount()
+        return {"id": self.id, "state": self.state, "cleared": cleared}
 
     def submit_physical_pwa(self, physical_qty, idempotency_key=None):
         """Physical counter submits their independent headcount.

@@ -110,6 +110,22 @@ h3 { margin: 0; color: var(--muted); font-size: 1em; }
 .row.state-variance_rescan { border-left: 6px solid var(--red); background: #fdecea; }
 .row.state-reconciled  { border-left: 6px solid var(--green); background: #f0faf4; }
 
+/* Finish-scanning mismatch gate — red alert with Proceed / Reject choices. */
+#gate { margin-bottom: 12px; }
+.gate-alert {
+    background: #fdecea;
+    color: #7f1d1d;
+    border: 2px solid var(--red);
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.gate-alert .gate-nums { font-size: 1.05em; }
+.gate-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn.danger { background: var(--red); color: #fff; }
+
 .empty { color: var(--muted); text-align: center; padding: 24px; }
 .alert { background: #fdecea; color: #9b1c1c; padding: 12px; border-radius: 8px; }
 

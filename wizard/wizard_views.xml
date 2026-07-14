@@ -93,6 +93,44 @@
         </field>
     </record>
 
+    <!-- Recount gate wizard — Finish Scanning when Physical Count != Scanned -->
+    <record id="view_vivo_recount_gate_wizard_form" model="ir.ui.view">
+        <field name="name">vivo.count.recount.gate.wizard.form</field>
+        <field name="model">vivo.count.recount.gate.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Rack Count Mismatch">
+                <sheet>
+                    <field name="section_id" invisible="1"/>
+                    <div class="alert alert-danger" role="alert">
+                        <strong>Counts do not match for rack
+                            <field name="section_name" class="oe_inline" readonly="1"/>.</strong><br/>
+                        The manual Physical Count and the Scanned Total disagree. Choose
+                        whether to accept the discrepancy and submit the rack for review,
+                        or reject it and recount from scratch.
+                    </div>
+                    <group>
+                        <field name="physical_total_qty"/>
+                        <field name="scan_total_qty"/>
+                    </group>
+                    <div class="alert alert-warning" role="status">
+                        <strong>Reject &amp; Recount</strong> will DELETE all
+                        <field name="line_count" class="oe_inline" readonly="1"/> scanned
+                        line(s) on this rack (including any unknown-barcode lines) and send it
+                        back to scanning for a full rescan. This cannot be undone.
+                    </div>
+                </sheet>
+                <footer>
+                    <button name="action_proceed" type="object"
+                            string="Proceed — Accept Discrepancy" class="btn-primary"/>
+                    <button name="action_reject" type="object"
+                            string="Reject &amp; Recount" class="btn-danger"
+                            confirm="This will DELETE all scanned lines on this rack and require a full rescan. This cannot be undone. Continue?"/>
+                    <button string="Cancel" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
     <!-- Bounce sections wizard -->
     <record id="view_vivo_bounce_wizard_form" model="ir.ui.view">
         <field name="name">vivo.count.bounce.wizard.form</field>

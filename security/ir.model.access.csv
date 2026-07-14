@@ -42,6 +42,10 @@ access_approval_wizard_cfoo,vivo.count.approval.wizard cfoo,model_vivo_count_app
 access_reconcile_wizard_store_manager,vivo.count.session.reconcile.wizard store manager,model_vivo_count_session_reconcile_wizard,group_vivo_count_store_manager,1,1,1,1
 access_reconcile_wizard_regional,vivo.count.session.reconcile.wizard regional,model_vivo_count_session_reconcile_wizard,group_vivo_count_regional,1,1,1,1
 access_reconcile_wizard_cfoo,vivo.count.session.reconcile.wizard cfoo,model_vivo_count_session_reconcile_wizard,group_vivo_count_cfoo_audit,1,1,1,1
+access_recount_gate_wizard_counter,vivo.count.recount.gate.wizard counter,model_vivo_count_recount_gate_wizard,group_vivo_count_counter,1,1,1,1
+access_recount_gate_wizard_store_manager,vivo.count.recount.gate.wizard store manager,model_vivo_count_recount_gate_wizard,group_vivo_count_store_manager,1,1,1,1
+access_recount_gate_wizard_regional,vivo.count.recount.gate.wizard regional,model_vivo_count_recount_gate_wizard,group_vivo_count_regional,1,1,1,1
+access_recount_gate_wizard_cfoo,vivo.count.recount.gate.wizard cfoo,model_vivo_count_recount_gate_wizard,group_vivo_count_cfoo_audit,1,1,1,1
 access_bounce_wizard_store_manager,vivo.count.bounce.wizard store manager,model_vivo_count_bounce_wizard,group_vivo_count_store_manager,1,1,1,1
 access_bounce_wizard_regional,vivo.count.bounce.wizard regional,model_vivo_count_bounce_wizard,group_vivo_count_regional,1,1,1,1
 access_bounce_wizard_cfoo,vivo.count.bounce.wizard cfoo,model_vivo_count_bounce_wizard,group_vivo_count_cfoo_audit,1,1,1,1

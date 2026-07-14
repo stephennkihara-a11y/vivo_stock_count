@@ -110,7 +110,7 @@
             <form string="Section">
                 <header>
                     <button name="action_start_scanning" type="object" string="Start Scanning" class="btn-primary" invisible="state != 'draft'"/>
-                    <button name="action_finish_scanning" type="object" string="Finish Scanning" class="btn-primary" invisible="state != 'scanning'"/>
+                    <button name="action_finish_scanning_gate" type="object" string="Finish Scanning" class="btn-primary" invisible="state != 'scanning'"/>
                     <field name="state" widget="statusbar" statusbar_visible="draft,scanning,pending_review,reconciled"/>
                 </header>
                 <sheet>
@@ -147,6 +147,10 @@
                             <field name="locked_at"/>
                         </group>
                     </group>
+                    <div class="alert alert-danger" role="status" invisible="not recount_log">
+                        <strong>Recount history</strong>
+                        <field name="recount_log" readonly="1" nolabel="1"/>
+                    </div>
                     <notebook>
                         <page string="Counted in this rack" name="counted">
                             <field name="counted_line_count" invisible="1"/>
