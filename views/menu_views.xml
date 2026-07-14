@@ -6,7 +6,7 @@
     <menuitem id="menu_vivo_count_awaiting_review" name="Awaiting Review" parent="menu_vivo_count_root" action="action_vivo_count_session_review" sequence="15" groups="vivo_stock_count.group_vivo_count_store_manager"/>
     <menuitem id="menu_vivo_count_sections" name="Sections" parent="menu_vivo_count_root" action="action_vivo_count_section" sequence="20"/>
     <menuitem id="menu_vivo_count_variance" name="Variance Analysis" parent="menu_vivo_count_root" action="action_vivo_count_line" sequence="25"/>
-    <menuitem id="menu_vivo_count_recon_report" name="Recon Report" parent="menu_vivo_count_root" action="action_vivo_recon_report" sequence="28"/>
+    <menuitem id="menu_vivo_count_recon_report" name="Recon Report" parent="menu_vivo_count_root" action="action_vivo_recon_report_selector" sequence="28"/>
     <menuitem id="menu_vivo_count_reconciliations" name="Reconciliations" parent="menu_vivo_count_root" action="action_vivo_reconciliation" sequence="30"/>
     <menuitem id="menu_vivo_count_variance_trend" name="Variance Trend" parent="menu_vivo_count_root" action="action_vivo_variance_trend" sequence="35" groups="vivo_stock_count.group_vivo_count_store_manager"/>
 
