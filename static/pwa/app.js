@@ -404,6 +404,62 @@ async function resolveBarcode(barcode) {
     return null;
 }
 
+// ----- Per-line quantity controls (steppers + delete) -----
+// Both reuse the EXISTING paths so idempotency and the resilience queue stay
+// correct: adjust = a normal scan (fresh client uuid, local-first queue) with a
+// +1 / -1 quantity; remove = the same delete path as the ✕ button (queue purge
+// then the guarded server unlink). No parallel logic.
+async function removeScanRow(row) {
+    // Purge any not-yet-synced local scans for this item FIRST, so a removed
+    // scan can never be resurrected by a later sync. Unknown captures are keyed
+    // by barcode, known lines by product.
+    if (row.is_unknown) {
+        await idb.removeQueuedByBarcode(state.section.id, row.scanned_barcode);
+    } else {
+        await idb.removeQueuedByProduct(state.section.id, row.product_id);
+    }
+    await api.refreshQueue();
+    if (row.line_id) {
+        try {
+            const r = await api.deleteLine(row.line_id);
+            if (r && r.error) alert(r.error);
+        } catch (e) {
+            alert('Cannot remove a saved line while offline.');
+        }
+    }
+    await refreshLines();
+}
+
+async function adjustScanRow(row, delta) {
+    // Same endpoint a normal scan uses — record_scan sums scanned_qty, so a
+    // +1 / -1 rides the idempotent, queue-backed scan path. The scanning-state
+    // guard is enforced server-side (record_scan rejects a non-scanning rack).
+    const payload = row.is_unknown
+        ? {
+              section_id: state.section.id,
+              product_id: null,
+              scanned_qty: delta,
+              device_id: deviceId,
+              product_name: 'Unknown',
+              barcode: row.scanned_barcode,
+              scanned_barcode: row.scanned_barcode,
+          }
+        : {
+              section_id: state.section.id,
+              product_id: row.product_id,
+              scanned_qty: delta,
+              device_id: deviceId,
+              product_name: row.name,
+              barcode: row.barcode,
+          };
+    const r = await api.scan(payload);
+    const $last = $main.querySelector('#last-scan');
+    if (r && r.error && $last) {
+        $last.innerHTML = `<div class="warn">${r.error}</div>`;
+    }
+    await refreshLines();
+}
+
 async function refreshLines() {
     const $list = $main.querySelector('#line-list');
     if (!$list) return;
@@ -495,30 +551,33 @@ async function refreshLines() {
                     <small>${row.barcode || ''}</small>
                 </div>
                 ${status}
-                <span class="qty">${shown}</span>
+                <div class="stepper">
+                    <button class="line-dec" title="Decrease" aria-label="Decrease quantity">−</button>
+                    <span class="qty">${shown}</span>
+                    <button class="line-inc" title="Increase" aria-label="Increase quantity">+</button>
+                </div>
                 <button class="line-del" title="Remove line" aria-label="Remove line">✕</button>
             </div>`);
+        // "+" -> one more unit (a normal scan of qty 1).
+        $row.querySelector('.line-inc').addEventListener('click', async (ev) => {
+            ev.stopPropagation();
+            await adjustScanRow(row, 1);
+        });
+        // "−" -> one fewer unit. Reaching zero removes the line (same effect as
+        // ✕): a single decrement to zero, so no extra confirm prompt.
+        $row.querySelector('.line-dec').addEventListener('click', async (ev) => {
+            ev.stopPropagation();
+            if (shown <= 1) {
+                await removeScanRow(row);
+            } else {
+                await adjustScanRow(row, -1);
+            }
+        });
+        // "✕" -> remove the whole line (confirmed).
         $row.querySelector('.line-del').addEventListener('click', async (ev) => {
             ev.stopPropagation();
             if (!confirm(`Remove ${row.name} from this rack?`)) return;
-            // Purge any not-yet-synced local scans for this item FIRST, so a
-            // deleted scan can never be resurrected by a later sync. Unknown
-            // captures are keyed by barcode, known lines by product.
-            if (row.is_unknown) {
-                await idb.removeQueuedByBarcode(state.section.id, row.scanned_barcode);
-            } else {
-                await idb.removeQueuedByProduct(state.section.id, row.product_id);
-            }
-            await api.refreshQueue();
-            if (row.line_id) {
-                try {
-                    const r = await api.deleteLine(row.line_id);
-                    if (r && r.error) alert(r.error);
-                } catch (e) {
-                    alert('Cannot remove a saved line while offline.');
-                }
-            }
-            await refreshLines();
+            await removeScanRow(row);
         });
         $list.appendChild($row);
     }

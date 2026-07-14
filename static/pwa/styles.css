@@ -86,6 +86,24 @@ h3 { margin: 0; color: var(--muted); font-size: 1em; }
     padding: 6px 8px;
     cursor: pointer;
 }
+/* Per-line quantity stepper: [−] qty [+] — touch-friendly targets. */
+.stepper { display: flex; align-items: center; gap: 6px; margin: 0 4px; }
+.row.compact .line-inc,
+.row.compact .line-dec {
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text);
+    font-size: 1.2em;
+    line-height: 1;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    padding: 0;
+    cursor: pointer;
+}
+.row.compact .line-inc:active,
+.row.compact .line-dec:active { background: var(--bg); }
+.row.compact .stepper .qty { min-width: 22px; text-align: center; }
 .line-status { margin: 0 8px; font-size: 0.95em; }
 .line-status.saved { color: #2e7d32; }
 .line-status.pending { color: var(--orange, #e67e22); }

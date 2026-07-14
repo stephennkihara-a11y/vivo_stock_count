@@ -15,3 +15,4 @@ from . import test_scan_delete_line
 from . import test_scan_idempotency
 from . import test_unknown_barcode
 from . import test_rack_recount_gate
+from . import test_scan_line_steppers
