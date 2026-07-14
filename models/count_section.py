@@ -267,29 +267,34 @@ class VivoCountSection(models.Model):
     # ------------------------------------------------------------------
     # Recount gate — Finish Scanning when physical count != scanned total
     # ------------------------------------------------------------------
-    def _counts_match(self):
-        """True when the manual Physical Count equals the scanned total.
+    def _mismatch_gate_triggered(self):
+        """True when the Finish-Scanning mismatch gate should fire.
 
-        Compares ``physical_total_qty`` (manual entry) against
-        ``scan_total_qty`` (sum of counted_qty). Neither is changed here —
-        the gate is a read-only comparison used by both surfaces on Finish.
+        The gate fires ONLY when a Physical Count was actually entered
+        (``physical_total_qty`` > 0) AND it disagrees with the scanned total
+        (sum of counted_qty). A blank/zero physical count means no independent
+        count was taken — there is nothing to compare, so Finish proceeds
+        normally with no alert. Read-only: neither total is changed here. Used
+        by both surfaces on Finish so the rule stays in one place.
         """
         self.ensure_one()
-        return self.physical_total_qty == self.scan_total_qty
+        phys = self.physical_total_qty or 0.0
+        return phys > 0 and phys != self.scan_total_qty
 
     def action_finish_scanning_gate(self):
         """Desktop Finish Scanning entry point.
 
-        If the Physical Count matches the scanned total, finish exactly as
-        ``action_finish_scanning`` does (advance to pending_review). If they
-        DISAGREE, open the recount-gate wizard — a red alert with two choices
+        If no Physical Count was entered, or it matches the scanned total,
+        finish exactly as ``action_finish_scanning`` does (advance to
+        pending_review). Only when an entered Physical Count DISAGREES with the
+        scan does the recount-gate wizard open — a red alert with two choices
         (Proceed and accept the discrepancy, or Reject & recount) — instead of
         finishing silently.
         """
         self.ensure_one()
         if self.state != "scanning":
             raise UserError(_("Section %s is not in scanning state.") % self.name)
-        if self._counts_match():
+        if not self._mismatch_gate_triggered():
             return self.action_finish_scanning()
         return {
             "type": "ir.actions.act_window",
@@ -636,19 +641,21 @@ class VivoCountSection(models.Model):
         }
 
     def finish_scanning_pwa(self, force=False):
-        """Scanner finishes the rack. If the manual Physical Count matches the
-        scanned total (or ``force`` is set — the counter chose Proceed on the
-        mismatch alert), advance to pending_review as the two-party flow does.
+        """Scanner finishes the rack. If no Physical Count was entered, or it
+        matches the scanned total (or ``force`` is set — the counter chose
+        Proceed on the mismatch alert), advance to pending_review as the
+        two-party flow does.
 
-        On a mismatch with ``force`` unset, DO NOT advance: return a payload the
-        PWA uses to raise its red alert with the two choices (Proceed / Reject &
+        Only when an entered Physical Count disagrees with the scan and
+        ``force`` is unset does this NOT advance: it returns a payload the PWA
+        uses to raise its red alert with the two choices (Proceed / Reject &
         recount). No second-person approval in the two-party flow.
         """
         self.ensure_one()
         if self.state != "scanning":
             # Nothing to gate — already advanced or not scanning; report state.
             return {"id": self.id, "state": self.state, "mismatch": False}
-        if not force and not self._counts_match():
+        if not force and self._mismatch_gate_triggered():
             return {
                 "id": self.id,
                 "state": self.state,

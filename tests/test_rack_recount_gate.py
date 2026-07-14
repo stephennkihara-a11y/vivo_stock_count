@@ -75,6 +75,24 @@ class TestRackRecountGate(TransactionCase):
         self.assertTrue(result is True, "match advances directly, no wizard action")
         self.assertEqual(sec.state, "pending_review")
 
+    # (a2) blank/0 physical count -> no gate, finish proceeds normally --------
+    def test_blank_physical_count_finishes_without_gate(self):
+        sec = self._fresh_section()
+        self._scan_known(sec, "rc-a2", qty=3)
+        # No Physical Count entered (defaults to 0) — nothing to compare, so the
+        # gate must NOT fire even though 0 != scanned total (3).
+        self.assertEqual(sec.physical_total_qty, 0.0)
+        result = sec.action_finish_scanning_gate()
+        self.assertTrue(result is True, "blank physical count advances, no wizard")
+        self.assertEqual(sec.state, "pending_review")
+
+    def test_blank_physical_count_pwa_finishes_without_gate(self):
+        sec = self._fresh_section()
+        self._scan_known(sec, "rc-a2p", qty=3)
+        payload = sec.finish_scanning_pwa()  # physical_total_qty == 0
+        self.assertFalse(payload.get("mismatch"), "no gate on a blank physical count")
+        self.assertEqual(sec.state, "pending_review")
+
     # (b) mismatch -> gate shows the wizard; Proceed advances, lines intact ----
     def test_mismatch_opens_gate_then_proceed_advances(self):
         sec = self._fresh_section()
