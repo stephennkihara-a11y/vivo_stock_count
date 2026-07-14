@@ -154,9 +154,11 @@
                                 <list editable="bottom" decoration-danger="is_unknown or difference &lt; 0" decoration-success="not is_unknown and difference &gt; 0">
                                     <field name="is_unknown" column_invisible="1"/>
                                     <field name="product_id"/>
+                                    <field name="barcode" readonly="1"/>
                                     <field name="scanned_barcode" string="Unknown Barcode" optional="show"/>
                                     <field name="system_qty"/>
                                     <field name="counted_qty"/>
+                                    <field name="lst_price" readonly="1"/>
                                     <field name="difference"/>
                                     <field name="variance_reason"/>
                                     <field name="variance_note"/>

@@ -93,6 +93,12 @@ class VivoCountLine(models.Model):
     )
 
     unit_cost = fields.Float(string="Unit Cost", digits="Product Price")
+    lst_price = fields.Float(
+        string="Unit Price",
+        related="product_id.lst_price",
+        digits="Product Price",
+        readonly=True,
+    )
     currency_id = fields.Many2one(
         related="section_id.session_id.currency_id", readonly=True
     )
