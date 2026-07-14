@@ -226,6 +226,25 @@ class VivoCountAPI(http.Controller):
             for l in lines
         ]
 
+    @http.route(
+        "/vivo-count/api/line/delete",
+        auth="user",
+        type="json",
+        methods=["POST"],
+    )
+    def line_delete(self, line_id):
+        """Remove a scanned line (double-scan / wrong rack). The scanning-state
+        guard lives in vivo.count.line.unlink(), so this route cannot bypass it."""
+        line = request.env["vivo.count.line"].browse(line_id).exists()
+        if not line:
+            return {"error": "Line not found."}
+        try:
+            return line.action_delete_scan_line()
+        except (UserError, ValidationError) as e:
+            return {"error": str(e)}
+        except AccessError as e:
+            return {"error": str(e), "access_denied": True}
+
     # ------------------------------------------------------------------
     # Physical counter mode
     # ------------------------------------------------------------------

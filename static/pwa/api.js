@@ -51,6 +51,7 @@ export const api = {
     sessions: (location_id) => rpc('/vivo-count/api/sessions', { location_id }),
     sections: (session_id) => rpc('/vivo-count/api/sections', { session_id }),
     sectionLines: (section_id) => rpc('/vivo-count/api/section/lines', { section_id }),
+    deleteLine: (line_id) => rpc('/vivo-count/api/line/delete', { line_id }),
     lookupBarcode: (barcode, session_id) =>
         rpc('/vivo-count/api/lookup_barcode', { barcode, session_id }),
     openSection: (section_id) => rpc('/vivo-count/api/section/open', { section_id }),

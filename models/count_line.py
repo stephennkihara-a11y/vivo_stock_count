@@ -1,5 +1,5 @@
 from odoo import _, api, fields, models
-from odoo.exceptions import ValidationError
+from odoo.exceptions import UserError, ValidationError
 
 
 VARIANCE_REASONS = [
@@ -126,6 +126,39 @@ class VivoCountLine(models.Model):
                         "SKU before reconciliation."
                     )
                 )
+
+    # ------------------------------------------------------------------
+    # Delete guard — a scanned line may only be removed while scanning
+    # ------------------------------------------------------------------
+    def unlink(self):
+        """Hard audit guard shared by EVERY delete path — the desktop trash
+        icon, the PWA delete button, and any direct ORM unlink.
+
+        A scanned line may be removed ONLY while its rack is still being
+        scanned. Once the rack is submitted (pending_review / reconciled /
+        excluded / any non-scanning state) the line is locked, so a variance
+        cannot be erased after review. This is server-side and unconditional —
+        not just hidden in the UI.
+        """
+        for line in self:
+            section = line.section_id
+            if section and section.state != "scanning":
+                raise UserError(
+                    _(
+                        "Lines can only be removed while the rack is still being "
+                        "scanned. Rack %(rack)s is now '%(state)s'."
+                    )
+                    % {"rack": section.name, "state": section.state}
+                )
+        return super().unlink()
+
+    def action_delete_scan_line(self):
+        """Delete a scanned line to fix a mistake (double-scan, or item scanned
+        into the wrong rack). The scanning-state rule is enforced in ``unlink``
+        above, so the PWA and desktop routes share exactly one guard."""
+        self.ensure_one()
+        self.unlink()
+        return {"ok": True, "deleted": True}
 
     # ------------------------------------------------------------------
     # PWA API (Phase 3)

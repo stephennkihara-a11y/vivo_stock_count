@@ -326,7 +326,18 @@ async function refreshLines() {
                     <small>${l.barcode || ''}</small>
                 </div>
                 <span class="qty">${l.counted_qty}</span>
+                <button class="line-del" data-id="${l.id}" title="Remove line" aria-label="Remove line">✕</button>
             </div>`);
+        row.querySelector('.line-del').addEventListener('click', async (ev) => {
+            ev.stopPropagation();
+            if (!confirm(`Remove ${l.product_name} from this rack?`)) return;
+            const r = await api.deleteLine(l.id);
+            if (r && r.error) {
+                alert(r.error);
+                return;
+            }
+            await refreshLines();
+        });
         $list.appendChild(row);
     }
     const $t = $main.querySelector('#scan-total');

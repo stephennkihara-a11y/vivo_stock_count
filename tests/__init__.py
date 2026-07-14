@@ -11,3 +11,4 @@ from . import test_counted_split
 from . import test_section_review
 from . import test_count_mode
 from . import test_recon_report
+from . import test_scan_delete_line

@@ -19,7 +19,7 @@ access_recon_report_counter,vivo.count.recon.report counter,model_vivo_count_rec
 access_recon_report_store_manager,vivo.count.recon.report store manager,model_vivo_count_recon_report,group_vivo_count_store_manager,1,0,0,0
 access_recon_report_regional,vivo.count.recon.report regional,model_vivo_count_recon_report,group_vivo_count_regional,1,0,0,0
 access_recon_report_cfoo,vivo.count.recon.report cfoo,model_vivo_count_recon_report,group_vivo_count_cfoo_audit,1,0,0,0
-access_line_counter,vivo.count.line counter,model_vivo_count_line,group_vivo_count_counter,1,1,1,0
+access_line_counter,vivo.count.line counter,model_vivo_count_line,group_vivo_count_counter,1,1,1,1
 access_line_store_manager,vivo.count.line store manager,model_vivo_count_line,group_vivo_count_store_manager,1,1,1,1
 access_line_regional,vivo.count.line regional,model_vivo_count_line,group_vivo_count_regional,1,1,1,1
 access_line_cfoo,vivo.count.line cfoo,model_vivo_count_line,group_vivo_count_cfoo_audit,1,1,1,1

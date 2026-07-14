@@ -76,6 +76,16 @@ h3 { margin: 0; color: var(--muted); font-size: 1em; }
 .list.compact .row { padding: 10px 12px; }
 .row.compact { padding: 10px 12px; }
 .qty { font-weight: 700; }
+.row.compact .line-del {
+    margin-left: 10px;
+    border: 0;
+    background: transparent;
+    color: var(--red, #c0392b);
+    font-size: 1.1em;
+    line-height: 1;
+    padding: 6px 8px;
+    cursor: pointer;
+}
 
 .row.state-draft       { border-left: 6px solid var(--gray); }
 .row.state-scanning    { border-left: 6px solid var(--amber); }
