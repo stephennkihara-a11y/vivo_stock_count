@@ -163,8 +163,10 @@
                                     <field name="scanned_barcode" string="Unknown Barcode" optional="show"/>
                                     <field name="system_qty"/>
                                     <field name="counted_qty"/>
+                                    <field name="unit_cost" string="Cost" readonly="1"/>
                                     <field name="lst_price" readonly="1"/>
                                     <field name="difference"/>
+                                    <field name="total_retail_price" string="Total Retail Price" readonly="1"/>
                                     <field name="variance_reason"/>
                                     <field name="variance_note"/>
                                     <field name="no_barcode_flag"/>

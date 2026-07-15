@@ -40,6 +40,8 @@
                 <field name="counted_qty"/>
                 <field name="variance" decoration-danger="variance &lt; 0" decoration-success="variance &gt; 0"/>
                 <field name="price"/>
+                <field name="cost"/>
+                <field name="total_retail_price"/>
                 <field name="rack_count"/>
                 <field name="rack_breakdown" optional="hide"/>
                 <field name="counted" column_invisible="1"/>
@@ -71,6 +73,8 @@
                             <field name="system_qty"/>
                             <field name="counted_qty"/>
                             <field name="variance"/>
+                            <field name="cost"/>
+                            <field name="total_retail_price"/>
                             <field name="rack_count"/>
                             <field name="counted"/>
                         </group>

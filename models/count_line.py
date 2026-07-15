@@ -107,6 +107,14 @@ class VivoCountLine(models.Model):
         store=True,
         currency_field="currency_id",
     )
+    total_retail_price = fields.Float(
+        string="Total Retail Price",
+        compute="_compute_total_retail_price",
+        store=True,
+        digits="Product Price",
+        help="Variance valued at RETAIL: difference * unit retail price "
+             "(lst_price). The cost-valued equivalent is variance_value.",
+    )
 
     scan_count = fields.Integer(default=0, readonly=True)
     variance_reason = fields.Selection(VARIANCE_REASONS)
@@ -150,6 +158,11 @@ class VivoCountLine(models.Model):
     def _compute_variance_value(self):
         for line in self:
             line.variance_value = line.difference * (line.unit_cost or 0.0)
+
+    @api.depends("difference", "lst_price")
+    def _compute_total_retail_price(self):
+        for line in self:
+            line.total_retail_price = line.difference * (line.lst_price or 0.0)
 
     @api.constrains("no_barcode_flag", "no_barcode_resolved", "product_id")
     def _check_no_barcode_resolution(self):

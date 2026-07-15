@@ -59,6 +59,10 @@ class VivoCountReconReport(models.Model):
         string="Variance", readonly=True, digits="Product Unit of Measure"
     )
     price = fields.Float(string="Price", readonly=True, digits="Product Price")
+    cost = fields.Float(string="Cost", readonly=True, digits="Product Price")
+    total_retail_price = fields.Float(
+        string="Total Retail Price", readonly=True, digits="Product Price"
+    )
     counted = fields.Boolean(string="Counted", readonly=True)
     rack_count = fields.Integer(string="Racks Counted", readonly=True)
 
@@ -147,6 +151,7 @@ class VivoCountReconReport(models.Model):
                         sec.session_id       AS session_id,
                         l.product_id         AS product_id,
                         MAX(l.system_qty)    AS system_qty,
+                        MAX(l.unit_cost)     AS cost,
                         MIN(l.id)            AS id
                     FROM vivo_count_line l
                     JOIN vivo_count_section sec ON sec.id = l.section_id
@@ -178,6 +183,9 @@ class VivoCountReconReport(models.Model):
                     COALESCE(c.counted_qty, 0.0)                    AS counted_qty,
                     COALESCE(c.counted_qty, 0.0) - b.system_qty     AS variance,
                     pt.list_price                                   AS price,
+                    b.cost                                          AS cost,
+                    (COALESCE(c.counted_qty, 0.0) - b.system_qty) * pt.list_price
+                                                                    AS total_retail_price,
                     COALESCE(c.counted, false)                      AS counted,
                     COALESCE(c.rack_count, 0)                       AS rack_count
                 FROM base b
@@ -206,6 +214,8 @@ class VivoCountReconReport(models.Model):
                     SUM(l.counted_qty)                              AS counted_qty,
                     SUM(l.counted_qty)                              AS variance,
                     0.0                                             AS price,
+                    0.0                                             AS cost,
+                    0.0                                             AS total_retail_price,
                     bool_or(l.counted_qty > 0)                      AS counted,
                     COUNT(*) FILTER (WHERE l.counted_qty > 0)       AS rack_count
                 FROM vivo_count_line l

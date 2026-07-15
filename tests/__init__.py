@@ -18,3 +18,4 @@ from . import test_rack_recount_gate
 from . import test_scan_line_steppers
 from . import test_mismatch_gate_review
 from . import test_reconcile_mismatch_gate
+from . import test_recon_cost_retail
