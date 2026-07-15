@@ -44,9 +44,17 @@ class VivoCountRecountGateWizard(models.TransientModel):
             wiz.line_count = len(wiz.section_id.line_ids)
 
     def action_proceed(self):
-        """Accept the discrepancy — advance the rack as Finish Scanning does."""
+        """Accept the discrepancy and advance the rack.
+
+        From the scanner's Finish path the rack is still ``scanning``, so finish
+        it (unchanged behaviour). From the supervisor's review path it is
+        already ``pending_review`` (awaiting the store reconcile) — accepting
+        the discrepancy leaves it exactly there, so there is nothing further to
+        advance. The state check keeps the original Finish behaviour byte-for-
+        byte while making Proceed reachable from the review-time gate."""
         self.ensure_one()
-        self.section_id.action_finish_scanning()
+        if self.section_id.state == "scanning":
+            self.section_id.action_finish_scanning()
         return self._reopen_section()
 
     def action_reject(self):

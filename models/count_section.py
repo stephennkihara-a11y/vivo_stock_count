@@ -362,6 +362,52 @@ class VivoCountSection(models.Model):
             (self.recount_log + "\n" + entry) if self.recount_log else entry
         )
 
+    def action_submit_physical_review(self):
+        """Supervisor's commit point in ``pending_review``.
+
+        This is the REAL firing point of the mismatch gate. The scanner's
+        ``action_finish_scanning_gate`` runs at scanning time, before any
+        physical count exists (physical_total_qty is 0), so it always skips.
+        The supervisor instead enters ``physical_total_qty`` on the rack while
+        it is ``pending_review`` ("Scanned — Awaiting Store Reconcile") and
+        submits here.
+
+        Uses the SAME shared helper ``_mismatch_gate_triggered`` (physical > 0
+        AND physical != scanned total):
+        - triggered  -> open the EXISTING recount gate wizard (red alert with
+          Proceed / Reject & Recount); nothing else is reused or rebuilt.
+        - not triggered (match, or a blank/zero physical count) -> leave the
+          rack in ``pending_review`` awaiting the store-level reconcile, exactly
+          as it sits today; only confirm the submission to the user.
+        """
+        self.ensure_one()
+        if self.state != "pending_review":
+            raise UserError(
+                _("Section %s is not awaiting store reconcile.") % self.name
+            )
+        if self._mismatch_gate_triggered():
+            return {
+                "type": "ir.actions.act_window",
+                "name": _("Rack Count Mismatch"),
+                "res_model": "vivo.count.recount.gate.wizard",
+                "view_mode": "form",
+                "target": "new",
+                "context": {"default_section_id": self.id},
+            }
+        return {
+            "type": "ir.actions.client",
+            "tag": "display_notification",
+            "params": {
+                "type": "success",
+                "title": _("Physical count recorded"),
+                "message": _(
+                    "Rack %s is ready for the store reconcile."
+                )
+                % self.name,
+                "next": {"type": "ir.actions.act_window_close"},
+            },
+        }
+
     def action_submit_physical_count(self, physical_qty=None):
         """physical_count -> pending_review | reconciled | variance_rescan.
 

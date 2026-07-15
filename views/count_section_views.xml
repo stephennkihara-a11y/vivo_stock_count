@@ -111,6 +111,7 @@
                 <header>
                     <button name="action_start_scanning" type="object" string="Start Scanning" class="btn-primary" invisible="state != 'draft'"/>
                     <button name="action_finish_scanning_gate" type="object" string="Finish Scanning" class="btn-primary" invisible="state != 'scanning'"/>
+                    <button name="action_submit_physical_review" type="object" string="Submit Physical Count" class="btn-primary" invisible="state != 'pending_review'"/>
                     <field name="state" widget="statusbar" statusbar_visible="draft,scanning,pending_review,reconciled"/>
                 </header>
                 <sheet>
