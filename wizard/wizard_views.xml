@@ -93,6 +93,57 @@
         </field>
     </record>
 
+    <!-- Store-level reconcile gate — mismatch / unverified check before reconcile -->
+    <record id="view_vivo_session_reconcile_gate_wizard_form" model="ir.ui.view">
+        <field name="name">vivo.count.session.reconcile.gate.wizard.form</field>
+        <field name="model">vivo.count.session.reconcile.gate.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Store Reconcile — Count Check">
+                <sheet>
+                    <field name="session_id" invisible="1"/>
+                    <field name="has_mismatch" invisible="1"/>
+                    <field name="unverified_count" invisible="1"/>
+                    <div class="alert alert-danger" role="alert" invisible="not has_mismatch">
+                        <strong>These racks were physically counted but the count does not
+                            match the scan.</strong><br/>
+                        Tick the racks to send back for a full rescan, or Proceed to reconcile
+                        the store with the discrepancies accepted.
+                    </div>
+                    <field name="mismatch_line_ids" nolabel="1" invisible="not has_mismatch">
+                        <list create="false" delete="false" editable="bottom">
+                            <field name="section_name" string="Rack" readonly="1"/>
+                            <field name="physical_qty" readonly="1"/>
+                            <field name="scanned_qty" readonly="1"/>
+                            <field name="variance" readonly="1"
+                                   decoration-danger="variance &lt; 0" decoration-success="variance &gt; 0"/>
+                            <field name="line_count" readonly="1"/>
+                            <field name="reject"/>
+                        </list>
+                    </field>
+                    <div class="alert alert-danger" role="alert" invisible="not reject_warning">
+                        <field name="reject_warning" readonly="1" nolabel="1"/>
+                    </div>
+                    <div class="alert alert-warning" role="status" invisible="unverified_count == 0">
+                        <strong>Not physically verified:</strong>
+                        <field name="unverified_names" class="oe_inline" readonly="1"/>
+                        (<field name="unverified_count" class="oe_inline" readonly="1"/> racks).
+                        These racks have no physical count entered — they are an advisory, not a
+                        mismatch, and will reconcile as scanned if you Proceed.
+                    </div>
+                </sheet>
+                <footer>
+                    <button name="action_proceed" type="object"
+                            string="Proceed — Reconcile Store" class="btn-primary"/>
+                    <button name="action_reject_selected" type="object"
+                            string="Reject Selected &amp; Recount" class="btn-danger"
+                            invisible="not has_mismatch"
+                            confirm="This permanently DELETES the ticked racks' scans and requires a full rescan of them. It cannot be undone, and the store will NOT reconcile now. Continue?"/>
+                    <button string="Cancel" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
     <!-- Recount gate wizard — Finish Scanning when Physical Count != Scanned -->
     <record id="view_vivo_recount_gate_wizard_form" model="ir.ui.view">
         <field name="name">vivo.count.recount.gate.wizard.form</field>

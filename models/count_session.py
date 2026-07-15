@@ -648,12 +648,50 @@ class VivoCountSession(models.Model):
         return True
 
     def action_open_reconcile_wizard(self):
-        """Open the store reconcile wizard for the auditor (review state)."""
+        """Open the store reconcile for the auditor (review state).
+
+        A SECOND mismatch gate runs first: if any rack about to be reconciled has
+        a physical-vs-scan mismatch, or was never physically verified, the
+        store-level gate wizard opens instead of the note wizard. Only when the
+        session is clean does this fall straight through to the reconcile note
+        wizard, exactly as before — the gate never nags a clean session."""
+        self.ensure_one()
+        gate = self._reconcile_gate_action()
+        if gate:
+            return gate
+        return self._open_reconcile_note_wizard()
+
+    def _open_reconcile_note_wizard(self):
+        """The reconcile note wizard — the auditor's Scanned -> Reconciled path.
+        Kept separate so the gate's Proceed can reach it without re-gating."""
         self.ensure_one()
         return {
             "type": "ir.actions.act_window",
             "name": _("Reconcile Store — %s") % self.name,
             "res_model": "vivo.count.session.reconcile.wizard",
+            "view_mode": "form",
+            "target": "new",
+            "context": {"default_session_id": self.id},
+        }
+
+    def _reconcile_gate_action(self):
+        """Return the store-level gate wizard action when any rack about to be
+        reconciled (``pending_review``) mismatches or was never physically
+        verified; else None so the reconcile proceeds exactly as today.
+
+        MISMATCH reuses the shared per-rack helper ``_mismatch_gate_triggered``
+        (physical > 0 AND physical != scanned). UNVERIFIED = no physical entered
+        (blank/0) — surfaced as a softer advisory, not a mismatch."""
+        self.ensure_one()
+        _pct, ready, _out = self._store_reconcile_readiness()
+        mismatch = ready.filtered(lambda s: s._mismatch_gate_triggered())
+        unverified = ready.filtered(lambda s: (s.physical_total_qty or 0.0) <= 0)
+        if not mismatch and not unverified:
+            return None
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Store Reconcile — Count Check"),
+            "res_model": "vivo.count.session.reconcile.gate.wizard",
             "view_mode": "form",
             "target": "new",
             "context": {"default_session_id": self.id},
