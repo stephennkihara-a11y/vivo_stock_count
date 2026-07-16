@@ -63,6 +63,9 @@ class VivoCountReconReport(models.Model):
     total_retail_price = fields.Float(
         string="Total Retail Price", readonly=True, digits="Product Price"
     )
+    total_cost_price = fields.Float(
+        string="Total Cost Price", readonly=True, digits="Product Price"
+    )
     counted = fields.Boolean(string="Counted", readonly=True)
     rack_count = fields.Integer(string="Racks Counted", readonly=True)
 
@@ -186,6 +189,8 @@ class VivoCountReconReport(models.Model):
                     b.cost                                          AS cost,
                     (COALESCE(c.counted_qty, 0.0) - b.system_qty) * pt.list_price
                                                                     AS total_retail_price,
+                    (COALESCE(c.counted_qty, 0.0) - b.system_qty) * b.cost
+                                                                    AS total_cost_price,
                     COALESCE(c.counted, false)                      AS counted,
                     COALESCE(c.rack_count, 0)                       AS rack_count
                 FROM base b
@@ -216,6 +221,7 @@ class VivoCountReconReport(models.Model):
                     0.0                                             AS price,
                     0.0                                             AS cost,
                     0.0                                             AS total_retail_price,
+                    0.0                                             AS total_cost_price,
                     bool_or(l.counted_qty > 0)                      AS counted,
                     COUNT(*) FILTER (WHERE l.counted_qty > 0)       AS rack_count
                 FROM vivo_count_line l

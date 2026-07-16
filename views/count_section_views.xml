@@ -156,17 +156,19 @@
                         <page string="Counted in this rack" name="counted">
                             <field name="counted_line_count" invisible="1"/>
                             <field name="line_ids" domain="[('counted_qty', '&gt;', 0)]" context="{'default_section_id': id}">
-                                <list editable="bottom" decoration-danger="is_unknown or difference &lt; 0" decoration-success="not is_unknown and difference &gt; 0">
+                                <list editable="bottom" limit="5000" decoration-danger="is_unknown or difference &lt; 0" decoration-success="not is_unknown and difference &gt; 0">
                                     <field name="is_unknown" column_invisible="1"/>
+                                    <field name="currency_id" column_invisible="1"/>
                                     <field name="product_id"/>
                                     <field name="barcode" readonly="1"/>
                                     <field name="scanned_barcode" string="Unknown Barcode" optional="show"/>
-                                    <field name="system_qty"/>
-                                    <field name="counted_qty"/>
+                                    <field name="system_qty" sum="Total System Qty"/>
+                                    <field name="counted_qty" sum="Total Counted Qty"/>
                                     <field name="unit_cost" string="Cost" readonly="1"/>
                                     <field name="lst_price" readonly="1"/>
-                                    <field name="difference"/>
-                                    <field name="total_retail_price" string="Total Retail Price" readonly="1"/>
+                                    <field name="difference" sum="Total Variance Qty"/>
+                                    <field name="total_retail_price" string="Total Retail Price" readonly="1" sum="Total Retail Price"/>
+                                    <field name="variance_value" string="Total Cost Price" readonly="1" sum="Total Cost Price"/>
                                     <field name="variance_reason"/>
                                     <field name="variance_note"/>
                                     <field name="no_barcode_flag"/>

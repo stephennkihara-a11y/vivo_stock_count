@@ -30,18 +30,20 @@
         <field name="model">vivo.count.recon.report</field>
         <field name="arch" type="xml">
             <list string="Recon Report" create="false" edit="false" delete="false"
+                  limit="5000"
                   decoration-muted="not counted" decoration-danger="is_unknown">
                 <field name="is_unknown" column_invisible="1"/>
                 <field name="product_id"/>
                 <field name="product_title"/>
                 <field name="barcode"/>
                 <field name="scanned_barcode" string="Unknown Barcode" optional="show"/>
-                <field name="system_qty"/>
-                <field name="counted_qty"/>
-                <field name="variance" decoration-danger="variance &lt; 0" decoration-success="variance &gt; 0"/>
+                <field name="system_qty" sum="Total System Qty"/>
+                <field name="counted_qty" sum="Total Counted Qty"/>
+                <field name="variance" decoration-danger="variance &lt; 0" decoration-success="variance &gt; 0" sum="Total Variance Qty"/>
                 <field name="price"/>
                 <field name="cost"/>
-                <field name="total_retail_price"/>
+                <field name="total_retail_price" sum="Total Retail Price"/>
+                <field name="total_cost_price" sum="Total Cost Price"/>
                 <field name="rack_count"/>
                 <field name="rack_breakdown" optional="hide"/>
                 <field name="counted" column_invisible="1"/>
@@ -75,6 +77,7 @@
                             <field name="variance"/>
                             <field name="cost"/>
                             <field name="total_retail_price"/>
+                            <field name="total_cost_price"/>
                             <field name="rack_count"/>
                             <field name="counted"/>
                         </group>
